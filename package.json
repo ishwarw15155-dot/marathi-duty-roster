@@ -1,0 +1,22 @@
+{
+  "name": "marathi-hospital-duty-roster",
+  "private": true,
+  "version": "13.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@indic-transliteration/sanscript": "^1.3.3",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "vite": "^6.0.5"
+  }
+}
