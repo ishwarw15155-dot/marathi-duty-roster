@@ -325,7 +325,7 @@ input:focus,select:focus{
   }
 }
 
-/* Exact shared column geometry: both printable tables use the same 3 fixed columns + 7 day columns. */
+/* Exact shared column geometry: both printable tables use the same 3 fixed columns + 7 day columns + 3 blank trailing columns. */
 .paper-roster,
 .paper-summary {
   width: 100%;
@@ -344,6 +344,9 @@ input:focus,select:focus{
 
 .paper-roster .col-day,
 .paper-summary .col-day { width: 49px; }
+
+.paper-roster .col-extra,
+.paper-summary .col-extra { width: 40px; }
 
 .paper-roster th,
 .paper-roster td,
@@ -649,9 +652,15 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
   line-height:1!important;
 }
 
-.paper-summary thead .summary-day,
-.paper-summary thead .summary-extra{
+.paper-summary thead .summary-day{
   font-size:var(--fs-header-all)!important;
+}
+
+/* The three trailing summary columns are intentionally blank. */
+.paper-summary .summary-extra-blank{
+  font-size:0!important;
+  color:transparent!important;
+  line-height:0!important;
 }
 
 .paper-roster tbody .group-row td{font-size:var(--fs-group)!important;}
@@ -664,7 +673,6 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
 
 .paper-summary .summary-label{font-size:var(--fs-summary-label)!important;}
 .paper-summary thead .summary-day{font-size:var(--fs-summary-day)!important;}
-.paper-summary thead .summary-extra{font-size:var(--fs-header-extra)!important;}
 .paper-summary .summary-count{font-size:var(--fs-summary-count)!important;}
 .paper-summary .summary-abbr{font-size:var(--fs-summary-abbr)!important;}
 
