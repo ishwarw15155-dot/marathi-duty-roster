@@ -59,7 +59,7 @@ async function requireAdmin(req) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "DELETE") {
+  if (req.method !== "POST" && req.method !== "DELETE") {
     return res.status(405).json({
       error: "Method not allowed",
     });
@@ -82,7 +82,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Find the ward user before deleting the ward.
     const {
       data: membership,
       error: membershipError,
@@ -100,9 +99,6 @@ export default async function handler(req, res) {
 
     const wardUserId = membership?.user_id || null;
 
-    // Delete the ward.
-    // Related roster, history and membership rows are
-    // removed through ON DELETE CASCADE.
     const {
       error: wardError,
     } = await supabaseAdmin
@@ -116,14 +112,12 @@ export default async function handler(req, res) {
       });
     }
 
-    // Delete the ward's profile.
     if (wardUserId) {
       await supabaseAdmin
         .from("profiles")
         .delete()
         .eq("user_id", wardUserId);
 
-      // Finally delete the actual Supabase Auth account.
       const {
         error: authDeleteError,
       } =
