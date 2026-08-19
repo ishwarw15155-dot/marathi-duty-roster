@@ -865,3 +865,80 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
   font-size:12px;
   line-height:1.45;
 }
+
+/* v13.7: summary categories + EL/ML leave range */
+.leave-inline-controls{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  flex-wrap:wrap;
+  margin-top:5px;
+}
+.leave-inline-controls select,
+.leave-inline-controls input{
+  min-width:0;
+  height:28px;
+  padding:3px 5px;
+  border:1px solid #d5dce3;
+  border-radius:5px;
+  font-size:10px;
+  background:#fff;
+}
+.leave-inline-controls select{max-width:145px;}
+.leave-inline-controls input{width:112px;}
+.leave-inline-controls span{font-size:10px;color:#68737d;}
+.leave-range-preview{
+  margin-top:4px;
+  font-size:10px;
+  font-weight:700;
+  color:#8a3b12;
+}
+.leave-day-mark{
+  min-height:42px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:2px;
+  border:1px solid #e3b48d;
+  border-radius:5px;
+  background:#fff7ef;
+  color:#8a3b12;
+}
+.leave-day-mark b{font-size:12px;}
+.leave-day-mark small{font-size:8px;}
+.summary-check{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  font-size:9px;
+  white-space:nowrap;
+}
+.summary-check input{margin:0;}
+.duty-header-row,
+.duty-row{
+  grid-template-columns:1.1fr .55fr 1fr .8fr .8fr .65fr .45fr;
+}
+.leave-range-print{
+  display:block;
+  margin-top:2px;
+  font-size:8px;
+  line-height:1.15;
+  font-weight:700;
+  white-space:normal;
+}
+.forced-leave-cell{
+  font-weight:700;
+}
+.paper-summary .summary-label{
+  text-align:center !important;
+  vertical-align:middle !important;
+}
+.paper-summary .summary-label .summary-abbr{
+  margin-left:3px;
+}
+@media print{
+  .leave-range-print{font-size:7px !important;}
+  .forced-leave-cell small{font-size:7px !important;}
+}
