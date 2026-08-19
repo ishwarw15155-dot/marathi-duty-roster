@@ -942,3 +942,31 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
   .leave-range-print{font-size:7px !important;}
   .forced-leave-cell small{font-size:7px !important;}
 }
+
+
+/* v13.8: EL/ML notice stays on the same row as the staff name in A4 */
+.print-name-inline{
+  display:flex;
+  align-items:baseline;
+  gap:6px;
+  flex-wrap:nowrap;
+  white-space:nowrap;
+  min-width:0;
+}
+.leave-range-print-inline{
+  font-size:9px;
+  font-weight:700;
+  color:#8a3b12;
+  white-space:nowrap;
+}
+.holiday-check{
+  min-width:72px;
+}
+@media print{
+  .print-name-inline{white-space:nowrap;}
+  .leave-range-print-inline{font-size:8px;}
+}
+
+
+/* v13.8.1: daily EL/ML cells are never auto-forced. */
+.forced-leave-cell{background:inherit;}
