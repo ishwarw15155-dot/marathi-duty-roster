@@ -1997,7 +1997,10 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
           <col className="col-sr" />
           <col className="col-roll" />
           <col className="col-name" />
-          {labels.map((_,i)=><col className="col-day" key={i} />)}
+          {labels.map((_,i)=><col className="col-day" key={`summary-day-${i}`} />)}
+          <col className="col-extra" />
+          <col className="col-extra" />
+          <col className="col-extra" />
         </colgroup>
 
         <thead>
@@ -2012,6 +2015,10 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                 <small>{d.date}</small>
               </th>
             )}
+
+            <th className="summary-extra" aria-hidden="true"></th>
+            <th className="summary-extra" aria-hidden="true"></th>
+            <th className="summary-extra" aria-hidden="true"></th>
 
           </tr>
         </thead>
@@ -2034,6 +2041,10 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                 </td>
               )}
 
+              <td className="summary-extra" aria-hidden="true"></td>
+              <td className="summary-extra" aria-hidden="true"></td>
+              <td className="summary-extra" aria-hidden="true"></td>
+
             </tr>
           )}
 
@@ -2049,6 +2060,10 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                 ).reduce((a,b)=>a+b,0)||""}
               </td>
             )}
+
+            <td className="summary-extra" aria-hidden="true"></td>
+            <td className="summary-extra" aria-hidden="true"></td>
+            <td className="summary-extra" aria-hidden="true"></td>
           </tr>
 
         </tbody>
