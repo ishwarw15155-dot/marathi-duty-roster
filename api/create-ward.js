@@ -1,46 +1,74 @@
 import { supabaseAdmin } from "./_supabaseAdmin.js";
+import { getSecret } from "./_auth.js";
 
-function getToken(req) {
+function getSession(req) {
   const cookie = req.headers.cookie || "";
   const match = cookie.match(/(?:^|;\s*)duty_auth=([^;]+)/);
 
-  return match ? decodeURIComponent(match[1]) : null;
-}
+  if (!match) return null;
 
-async function getCurrentUser(req) {
-  const accessToken = getToken(req);
+  try {
+    const token = decodeURIComponent(match[1]);
+    const session = JSON.parse(
+      Buffer.from(token, "base64url").toString("utf8")
+    );
 
-  if (!accessToken) {
+    if (!session || !session.username || !session.role) {
+      return null;
+    }
+
+    if (session.secret !== getSecret()) {
+      return null;
+    }
+
+    return session;
+  } catch {
     return null;
   }
-
-  const {
-    data: { user },
-    error,
-  } = await supabaseAdmin.auth.getUser(accessToken);
-
-  if (error || !user) {
-    return null;
-  }
-
-  return user;
 }
 
-async function isAdmin(userId) {
-  const {
-    data: profile,
-    error,
-  } = await supabaseAdmin
+async function requireAdmin(req) {
+  const session = getSession(req);
+
+  if (!session) {
+    return {
+      session: null,
+      error: {
+        status: 401,
+        message: "Not authenticated",
+      },
+    };
+  }
+
+  if (session.role !== "admin") {
+    return {
+      session: null,
+      error: {
+        status: 403,
+        message: "Administrator access required",
+      },
+    };
+  }
+
+  return {
+    session,
+    error: null,
+  };
+}
+
+async function getAdminUserId(username) {
+  const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("role")
-    .eq("user_id", userId)
+    .select("user_id")
+    .eq("username", username)
+    .eq("role", "admin")
     .single();
 
-  return (
-    !error &&
-    profile &&
-    profile.role === "admin"
-  );
+  if (error || !data?.user_id) {
+    return null;
+  }
+
+  return data.user_id;
 }
 
 export default async function handler(req, res) {
@@ -51,19 +79,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const user = await getCurrentUser(req);
+    const auth = await requireAdmin(req);
 
-    if (!user) {
-      return res.status(401).json({
-        error: "Not authenticated",
-      });
-    }
-
-    const admin = await isAdmin(user.id);
-
-    if (!admin) {
-      return res.status(403).json({
-        error: "Administrator access required",
+    if (auth.error) {
+      return res.status(auth.error.status).json({
+        error: auth.error.message,
       });
     }
 
@@ -89,8 +109,7 @@ export default async function handler(req, res) {
     }
 
     const cleanWardName = wardName.trim();
-    const cleanWardCode =
-      wardCode?.trim() || null;
+    const cleanWardCode = wardCode?.trim() || null;
     const cleanUsername = username.trim();
 
     const {
@@ -115,15 +134,19 @@ export default async function handler(req, res) {
       });
     }
 
+    // Find administrator's real user ID for updated_by.
+    const adminUserId = await getAdminUserId(
+      auth.session.username
+    );
+
     const {
       data: authData,
       error: authError,
-    } =
-      await supabaseAdmin.auth.admin.createUser({
-        email: `${cleanUsername}@ward.local`,
-        password,
-        email_confirm: true,
-      });
+    } = await supabaseAdmin.auth.admin.createUser({
+      email: `${cleanUsername}@ward.local`,
+      password,
+      email_confirm: true,
+    });
 
     if (authError || !authData?.user) {
       return res.status(400).json({
@@ -159,16 +182,15 @@ export default async function handler(req, res) {
       });
     }
 
-    const {
-      error: profileError,
-    } = await supabaseAdmin
-      .from("profiles")
-      .insert({
-        user_id: wardUser.id,
-        username: cleanUsername,
-        display_name: cleanWardName,
-        role: "ward",
-      });
+    const { error: profileError } =
+      await supabaseAdmin
+        .from("profiles")
+        .insert({
+          user_id: wardUser.id,
+          username: cleanUsername,
+          display_name: cleanWardName,
+          role: "ward",
+        });
 
     if (profileError) {
       await supabaseAdmin
@@ -185,14 +207,13 @@ export default async function handler(req, res) {
       });
     }
 
-    const {
-      error: memberError,
-    } = await supabaseAdmin
-      .from("ward_members")
-      .insert({
-        user_id: wardUser.id,
-        ward_id: ward.id,
-      });
+    const { error: memberError } =
+      await supabaseAdmin
+        .from("ward_members")
+        .insert({
+          user_id: wardUser.id,
+          ward_id: ward.id,
+        });
 
     if (memberError) {
       await supabaseAdmin
@@ -214,15 +235,14 @@ export default async function handler(req, res) {
       });
     }
 
-    const {
-      error: rosterError,
-    } = await supabaseAdmin
-      .from("ward_rosters")
-      .insert({
-        ward_id: ward.id,
-        roster: {},
-        updated_by: user.id,
-      });
+    const { error: rosterError } =
+      await supabaseAdmin
+        .from("ward_rosters")
+        .insert({
+          ward_id: ward.id,
+          roster: {},
+          updated_by: adminUserId || null,
+        });
 
     if (rosterError) {
       console.error(
@@ -242,10 +262,7 @@ export default async function handler(req, res) {
       },
     });
   } catch (error) {
-    console.error(
-      "Create ward error:",
-      error
-    );
+    console.error("Create ward error:", error);
 
     return res.status(500).json({
       error:
