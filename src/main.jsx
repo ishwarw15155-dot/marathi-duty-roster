@@ -2386,6 +2386,48 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
 });
 
 function PrintableRow({employee,index,duties,from}) {
+  const hasLeave=!!(employee.leaveType && employee.leaveFrom && employee.leaveTo);
+  const leaveDays=hasLeave
+    ? Array.from({length:7},(_,i)=>{
+        const date=isoDateForDay(from,i);
+        return !!(date && date>=employee.leaveFrom && date<=employee.leaveTo);
+      })
+    : Array(7).fill(false);
+
+  const renderDutyCell=(dayIndex)=>{
+    const key=employee.duties[dayIndex];
+    const duty=duties.find(d=>d.key===key);
+    return (
+      <td key={`duty-${dayIndex}`} className="print-duty-code">
+        {duty?.abbr || ""}
+        {employee.customNotes?.[dayIndex] ? <small>{employee.customNotes[dayIndex]}</small> : null}
+      </td>
+    );
+  };
+
+  const dayCells=[];
+  let i=0;
+  while(i<7){
+    if(!leaveDays[i]){
+      dayCells.push(renderDutyCell(i));
+      i++;
+      continue;
+    }
+
+    const start=i;
+    while(i<7 && leaveDays[i]) i++;
+    const span=i-start;
+    dayCells.push(
+      <td
+        key={`leave-${start}`}
+        colSpan={span}
+        className="leave-range-print-span"
+      >
+        {employee.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} FROM {formatDate(employee.leaveFrom)} TO {formatDate(employee.leaveTo)}
+      </td>
+    );
+  }
+
   return (
     <tr>
 
@@ -2405,21 +2447,7 @@ function PrintableRow({employee,index,duties,from}) {
         </div>
       </td>
 
-      {employee.leaveType && employee.leaveFrom && employee.leaveTo ? (
-        <td colSpan={7} className="leave-range-print-span">
-          {employee.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} FROM {formatDate(employee.leaveFrom)} TO {formatDate(employee.leaveTo)}
-        </td>
-      ) : (
-        employee.duties.map((key,i)=>{
-          const duty=duties.find(d=>d.key===key);
-          return (
-            <td key={i} className="print-duty-code">
-              {duty?.abbr || ""}
-              {employee.customNotes[i] ? <small>{employee.customNotes[i]}</small> : null}
-            </td>
-          );
-        })
-      )}
+      {dayCells}
 
       <td className="print-extra">{employee.nair||""}</td>
       <td className="print-extra">{employee.jama||""}</td>
