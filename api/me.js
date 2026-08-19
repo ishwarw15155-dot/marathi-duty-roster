@@ -1,2 +1,26 @@
-import {readCookie,verifyToken} from "./_auth.js";
-export default function handler(req,res){const user=verifyToken(readCookie(req,"duty_session"));if(!user)return res.status(401).json({error:"Not logged in"});return res.status(200).json({user});}
+import { getAdmin } from "./_auth.js";
+
+export default function handler(req, res) {
+  const cookie = req.headers.cookie || "";
+
+  const match = cookie.match(
+    /(?:^|;\s*)duty_auth=([^;]+)/
+  );
+
+  if (!match) {
+    return res.status(401).json({
+      authenticated: false,
+    });
+  }
+
+  const admin = getAdmin();
+
+  return res.status(200).json({
+    authenticated: true,
+    user: {
+      username: admin.username,
+      name: admin.name,
+      role: admin.role,
+    },
+  });
+}
