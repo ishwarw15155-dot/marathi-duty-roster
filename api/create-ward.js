@@ -1,19 +1,14 @@
 import { supabaseAdmin } from "./_supabaseAdmin.js";
 
-function getAccessToken(req) {
+function getToken(req) {
   const cookie = req.headers.cookie || "";
+  const match = cookie.match(/(?:^|;\s*)duty_auth=([^;]+)/);
 
-  const match = cookie.match(
-    /(?:^|;\s*)sb_access_token=([^;]+)/
-  );
-
-  return match
-    ? decodeURIComponent(match[1])
-    : null;
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 async function getCurrentUser(req) {
-  const accessToken = getAccessToken(req);
+  const accessToken = getToken(req);
 
   if (!accessToken) {
     return null;
@@ -22,9 +17,7 @@ async function getCurrentUser(req) {
   const {
     data: { user },
     error,
-  } = await supabaseAdmin.auth.getUser(
-    accessToken
-  );
+  } = await supabaseAdmin.auth.getUser(accessToken);
 
   if (error || !user) {
     return null;
@@ -100,7 +93,6 @@ export default async function handler(req, res) {
       wardCode?.trim() || null;
     const cleanUsername = username.trim();
 
-    // Check duplicate username.
     const {
       data: existingWard,
       error: existingError,
@@ -123,7 +115,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Create Supabase Auth user.
     const {
       data: authData,
       error: authError,
@@ -144,7 +135,6 @@ export default async function handler(req, res) {
 
     const wardUser = authData.user;
 
-    // Create ward.
     const {
       data: ward,
       error: wardError,
@@ -169,7 +159,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Create profile.
     const {
       error: profileError,
     } = await supabaseAdmin
@@ -196,7 +185,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Connect user to exactly one ward.
     const {
       error: memberError,
     } = await supabaseAdmin
@@ -226,7 +214,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Create an empty roster.
     const {
       error: rosterError,
     } = await supabaseAdmin
