@@ -970,3 +970,30 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
 
 /* v13.8.1: daily EL/ML cells are never auto-forced. */
 .forced-leave-cell{background:inherit;}
+
+
+/* v13.8.2: EL/ML notice spans Monday through Sunday as one borderless area. */
+.leave-range-print-span{
+  border:0 !important;
+  border-left:0 !important;
+  border-right:0 !important;
+  border-top:0 !important;
+  border-bottom:0 !important;
+  text-align:left !important;
+  vertical-align:middle !important;
+  padding:2px 6px !important;
+  white-space:nowrap !important;
+  font-size:var(--fs-name, 12px) !important;
+  font-weight:700 !important;
+  color:#8a3b12 !important;
+  background:transparent !important;
+  height:29px !important;
+}
+@media print{
+  .leave-range-print-span{
+    border:0 !important;
+    padding:2px 6px !important;
+    white-space:nowrap !important;
+    font-size:var(--fs-name, 12px) !important;
+  }
+}
