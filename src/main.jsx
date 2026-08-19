@@ -2423,7 +2423,9 @@ function PrintableRow({employee,index,duties,from}) {
         colSpan={span}
         className="leave-range-print-span"
       >
-        {employee.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} FROM {formatDate(employee.leaveFrom)} TO {formatDate(employee.leaveTo)}
+        <span className="leave-range-print-text">
+          {employee.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} FROM {formatDate(employee.leaveFrom)} TO {formatDate(employee.leaveTo)}
+        </span>
       </td>
     );
   }
