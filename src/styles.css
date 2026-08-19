@@ -1,6 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Tiro+Devanagari+Marathi:ital@0;1&display=swap");
 
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap");
 
 :root{
   font-family:"Noto Sans Devanagari",system-ui,sans-serif;
@@ -519,3 +518,47 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
 .login-note{display:block;margin-top:16px;color:#89939d;font-size:9px;line-height:1.5}
 .login-loading{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:var(--marathi-font);color:#56616d}
 @media print{.logged-user,.logout-btn{display:none!important}}
+
+
+/* FINAL v13.1 - clean Marathi font + centered A4 duty summary */
+.paper{
+  font-family:"Mukta","Noto Sans Devanagari","Tiro Devanagari Marathi","Nirmala UI",sans-serif;
+}
+
+.paper-roster,
+.paper-summary{
+  font-family:"Mukta","Noto Sans Devanagari","Tiro Devanagari Marathi","Nirmala UI",sans-serif;
+}
+
+.paper-summary .summary-duty{
+  text-align:center !important;
+  vertical-align:middle !important;
+  padding:0 !important;
+}
+
+.paper-summary .summary-duty *{
+  text-align:center !important;
+}
+
+.paper-summary .summary-abbr{
+  display:inline;
+  margin-left:4px;
+  font-weight:600;
+}
+
+@media print{
+  .paper,
+  .paper-roster,
+  .paper-summary,
+  .paper-roster th,
+  .paper-roster td,
+  .paper-summary th,
+  .paper-summary td{
+    font-family:"Mukta","Noto Sans Devanagari","Tiro Devanagari Marathi","Nirmala UI",sans-serif !important;
+  }
+
+  .paper-summary .summary-duty{
+    text-align:center !important;
+    vertical-align:middle !important;
+  }
+}
