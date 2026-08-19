@@ -1519,101 +1519,14 @@ function LoginScreen({onLogin}){
 }
 
 function AppShell(){
-  const [auth,setAuth]=useState(null);
-  const [checking,setChecking]=useState(true);
-
+  const [auth,setAuth]=useState(null); const [checking,setChecking]=useState(true);
   useEffect(()=>{
-    fetch("/api/me",{credentials:"include"})
-      .then(r=>r.ok ? r.json() : null)
-      .then(data=>{
-        setAuth(data?.user || null);
-      })
-      .catch(()=>{
-        setAuth(null);
-      })
-      .finally(()=>{
-        setChecking(false);
-      });
+    fetch("/api/me",{credentials:"include"}).then(r=>r.ok?r.json():null).then(data=>setAuth(data?.user||null)).catch(()=>setAuth(null)).finally(()=>setChecking(false));
   },[]);
-
-  const logout=async()=>{
-    await fetch(
-      "/api/logout",
-      {
-        method:"POST",
-        credentials:"include"
-      }
-    ).catch(()=>{});
-
-    setAuth(null);
-  };
-
-  if(checking){
-    return (
-      <div className="login-loading">
-        Loading Duty Roster...
-      </div>
-    );
-  }
-
-  if(!auth){
-    return (
-      <LoginScreen
-        onLogin={setAuth}
-      />
-    );
-  }
-
-  /*
-   * ADMINISTRATOR
-   * ----------------
-   * Admin users go to the Ward Manager dashboard.
-   */
-  if(auth.role==="admin"){
-    return (
-      <AdminDashboard
-        user={auth}
-        onLogout={logout}
-      />
-    );
-  }
-
-  /*
-   * WARD USER
-   * ----------------
-   * Ward users go directly to their Duty Roster.
-   */
-  if(auth.role==="ward"){
-    return (
-      <App
-        user={auth}
-        onLogout={logout}
-      />
-    );
-  }
-
-  /*
-   * Unknown role
-   */
-  return (
-    <div className="login-screen">
-      <div className="login-card">
-        <h2>Invalid User Role</h2>
-
-        <p>
-          Your account is authenticated, but no valid
-          administrator or ward role was found.
-        </p>
-
-        <button
-          className="dark-btn"
-          onClick={logout}
-        >
-          Logout
-        </button>
-      </div>
-    </div>
-  );
+  const logout=async()=>{await fetch("/api/logout",{method:"POST",credentials:"include"}).catch(()=>{});setAuth(null);};
+  if(checking) return <div className="login-loading">Loading Duty Roster...</div>;
+  if(!auth) return <LoginScreen onLogin={setAuth}/>;
+  return <App user={auth} onLogout={logout}/>;
 }
 
 function SizeControl({value,onChange,min=7,max=40,small=false}) {
