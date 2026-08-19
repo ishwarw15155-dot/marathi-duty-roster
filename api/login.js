@@ -1,2 +1,64 @@
-import {users,setSession} from "./_auth.js";
-export default function handler(req,res){if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});const {username,password}=req.body||{};if(!username||!password)return res.status(400).json({error:"Username and password are required"});const user=users().find(u=>u.password&&u.username===String(username).trim()&&u.password===String(password));if(!user)return res.status(401).json({error:"Invalid username or password"});setSession(res,user);return res.status(200).json({user:{username:user.username,name:user.name,role:user.role}});}
+import { getAdmin, getSecret } from "./_auth.js";
+
+function send(res, status, body, headers = {}) {
+  Object.entries(headers).forEach(([key, value]) => {
+    res.setHeader(key, value);
+  });
+
+  return res.status(status).json(body);
+}
+
+export default function handler(req, res) {
+  if (req.method !== "POST") {
+    return send(res, 405, {
+      error: "Method not allowed",
+    });
+  }
+
+  const { username, password } = req.body || {};
+
+  const admin = getAdmin();
+
+  // One-user login
+  if (
+    username !== admin.username ||
+    password !== admin.password
+  ) {
+    return send(res, 401, {
+      error: "Invalid username or password",
+    });
+  }
+
+  const sessionData = {
+    username: admin.username,
+    name: admin.name,
+    role: admin.role,
+    secret: getSecret(),
+  };
+
+  const token = Buffer.from(
+    JSON.stringify(sessionData)
+  ).toString("base64url");
+
+  return send(
+    res,
+    200,
+    {
+      ok: true,
+      user: {
+        username: admin.username,
+        name: admin.name,
+        role: admin.role,
+      },
+    },
+    {
+      "Set-Cookie":
+        `duty_auth=${token}; ` +
+        "Path=/; " +
+        "HttpOnly; " +
+        "SameSite=Lax; " +
+        "Secure; " +
+        "Max-Age=604800",
+    }
+  );
+}
