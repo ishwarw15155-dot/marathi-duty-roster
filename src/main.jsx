@@ -2184,9 +2184,12 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                 <small>{d.date}</small>
               </th>
             )}
-            <th className="summary-extra">नैर</th>
-            <th className="summary-extra">जमा</th>
-            <th className="summary-extra">रुजू</th>
+            {/* Keep three blank columns so सोम–रवि stay in the exact same
+                horizontal positions as the main table. No नैर/जमा/रुजू
+                labels or summary values are shown here. */}
+            <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>
+            <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>
+            <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>
 
           </tr>
         </thead>
@@ -2208,9 +2211,9 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                   {dailyDutyCounts[dayIndex][duty.key]||""}
                 </td>
               )}
-              <td className="summary-extra"></td>
-              <td className="summary-extra"></td>
-              <td className="summary-extra"></td>
+              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
 
             </tr>
           )}
@@ -2227,9 +2230,9 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                 ).reduce((a,b)=>a+b,0)||""}
               </td>
             )}
-            <td className="summary-extra"></td>
-            <td className="summary-extra"></td>
-            <td className="summary-extra"></td>
+            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
           </tr>
 
         </tbody>
