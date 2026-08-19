@@ -1,4 +1,4 @@
-/* v13.8.1: EL/ML ranges are informational only; they never overwrite daily duty cells. */
+/* v13.9: New week clears weekly duties/notes/EL-ML range, while preserving नैर/जमा/रुजू. */
 import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Sanscript from "@indic-transliteration/sanscript";
@@ -538,8 +538,13 @@ function App({user,onLogout}) {
       to:"",
       employees:r.employees.map(e=>({
         ...e,
+        // New week: clear only week-specific daily entries/notes and leave range.
+        // Keep staff identity, post, font settings, and नैर/जमा/रुजू values.
         duties:Array(7).fill(""),
-        customNotes:Array(7).fill("")
+        customNotes:Array(7).fill(""),
+        leaveType:"",
+        leaveFrom:"",
+        leaveTo:""
       })),
       savedAt:null
     }));
@@ -1207,7 +1212,7 @@ function App({user,onLogout}) {
             <div>
               <h2>Duty Assignment / ड्युटी</h2>
               <p>
-                M = सकाळ, E = दुपार, N = रापा, NO = रासू, L = रजा. EL/ML leave range दिल्यास त्या तारखांना duty cell आपोआप EL/ML दाखवेल.
+                M = सकाळ, E = दुपार, N = रापा, NO = रासू, L = रजा. EL/ML leave range ही फक्त नावाच्या row मध्ये माहिती म्हणून दिसेल; duty cells आपोआप बदलणार नाहीत.
               </p>
             </div>
 
@@ -2397,23 +2402,24 @@ function PrintableRow({employee,index,duties,from}) {
       >
         <div className="print-name-inline">
           <span>{displayStaffName(employee)}</span>
-          {employee.leaveType && employee.leaveFrom && employee.leaveTo &&
-            <span className="leave-range-print-inline">
-              {employee.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} FROM {formatDate(employee.leaveFrom)} TO {formatDate(employee.leaveTo)}
-            </span>
-          }
         </div>
       </td>
 
-      {employee.duties.map((key,i)=>{
-        const duty=duties.find(d=>d.key===key);
-        return (
-          <td key={i} className="print-duty-code">
-            {duty?.abbr || ""}
-            {employee.customNotes[i] ? <small>{employee.customNotes[i]}</small> : null}
-          </td>
-        );
-      })}
+      {employee.leaveType && employee.leaveFrom && employee.leaveTo ? (
+        <td colSpan={7} className="leave-range-print-span">
+          {employee.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} FROM {formatDate(employee.leaveFrom)} TO {formatDate(employee.leaveTo)}
+        </td>
+      ) : (
+        employee.duties.map((key,i)=>{
+          const duty=duties.find(d=>d.key===key);
+          return (
+            <td key={i} className="print-duty-code">
+              {duty?.abbr || ""}
+              {employee.customNotes[i] ? <small>{employee.customNotes[i]}</small> : null}
+            </td>
+          );
+        })
+      )}
 
       <td className="print-extra">{employee.nair||""}</td>
       <td className="print-extra">{employee.jama||""}</td>
