@@ -69,6 +69,27 @@ function blankRoster() {
     duties:DEFAULT_DUTIES.map(d=>({...d})),
     fontFamily:"Mukta",
     globalFontSize:16,
+    fontSizes:{
+      hospital:18,
+      department:18,
+      ward:16,
+      title:15,
+      date:13,
+      headerSr:11,
+      headerRoll:11,
+      headerName:11,
+      headerDay:11,
+      headerExtra:11,
+      group:12,
+      rollNumber:10.5,
+      staffName:16,
+      dutyCode:12,
+      extraValue:10.5,
+      summaryLabel:10.5,
+      summaryDay:11,
+      summaryCount:11,
+      summaryAbbr:8
+    },
     savedAt:null
   };
 }
@@ -114,6 +135,10 @@ function normalizeRoster(data={}) {
     ...data,
     fontFamily:data.fontFamily||base.fontFamily,
     globalFontSize:Math.max(12,Math.min(24,Number(data.globalFontSize)||base.globalFontSize)),
+    fontSizes:{
+      ...base.fontSizes,
+      ...(data.fontSizes||{})
+    },
     duties,
     posts,
     employees,
@@ -1300,6 +1325,14 @@ function App({user,onLogout}) {
         onChange={v=>update("fontFamily",v)}
         fontSize={roster.globalFontSize||16}
         onFontSizeChange={v=>update("globalFontSize",Math.max(12,Math.min(24,v)))}
+        fontSizes={roster.fontSizes}
+        onFontSizeFieldChange={(key,value)=>setRoster(r=>({
+          ...r,
+          fontSizes:{
+            ...r.fontSizes,
+            [key]:Math.max(7,Math.min(40,Number(value)||r.fontSizes?.[key]||12))
+          }
+        }))}
         onClose={()=>setShowFontSettings(false)}
       />
     }
@@ -1320,16 +1353,39 @@ function fontStack(font){
   return '"Mukta","Noto Sans Devanagari","Nirmala UI",sans-serif';
 }
 
-function FontSettingsModal({value,onChange,fontSize,onFontSizeChange,onClose}){
+function FontSettingsModal({value,onChange,fontSize,onFontSizeChange,fontSizes,onFontSizeFieldChange,onClose}){
+  const fields=[
+    ["hospital","Hospital Name / रुग्णालयाचे नाव"],
+    ["department","Department Name / विभागाचे नाव"],
+    ["ward","Ward Name / कक्षाचे नाव"],
+    ["title","Roster Title / शीर्षक"],
+    ["date","Date / दिनांक"],
+    ["headerSr","अ क्र"],
+    ["headerRoll","रोल नं"],
+    ["headerName","नावे"],
+    ["headerDay","सोम–रवि + दिनांक"],
+    ["headerExtra","नैर / जमा / रुजू"],
+    ["group","Post / Group Name"],
+    ["rollNumber","Staff Roll Number / क्रमांक"],
+    ["staffName","Staff Name / कर्मचारी नाव"],
+    ["dutyCode","Duty Code / M E N NO L"],
+    ["extraValue","नैर / जमा / रुजू Value"],
+    ["summaryLabel","Summary Duty Label"],
+    ["summaryDay","Summary सोम–रवि + दिनांक"],
+    ["summaryCount","Summary Numbers"],
+    ["summaryAbbr","Summary Abbreviation"]
+  ];
+
   return <div className="modal-backdrop">
-    <div className="font-modal">
+    <div className="font-modal element-font-modal">
       <div className="modal-head">
         <div>
-          <h2>Marathi Font Settings / मराठी फॉन्ट</h2>
-          <p>हा फॉन्ट Duty List आणि A4 Print/PDF मध्ये वापरला जाईल.</p>
+          <h2>Font & Size Settings / फॉन्ट व आकार</h2>
+          <p>प्रत्येक A4 element चा आकार स्वतंत्रपणे बदला.</p>
         </div>
         <button onClick={onClose}><X size={18}/></button>
       </div>
+
       <div className="font-options">
         {FONT_OPTIONS.map(font=><button key={font.value}
           className={`font-option ${value===font.value?"selected":""}`}
@@ -1338,23 +1394,52 @@ function FontSettingsModal({value,onChange,fontSize,onFontSizeChange,onClose}){
           <span className="font-option-sample">{font.sample}</span>
         </button>)}
       </div>
+
       <div className="global-size-control">
         <div className="global-size-head">
-          <b>सर्व मजकूराचा आकार / Overall Text Size</b>
+          <b>Overall Screen Size / संपूर्ण स्क्रीन आकार</b>
           <span>{fontSize}px</span>
         </div>
         <div className="global-size-row">
-          <button type="button" onClick={()=>onFontSizeChange(fontSize-1)} title="Decrease all text size">−</button>
-          <input type="range" min="12" max="24" step="1" value={fontSize} onChange={e=>onFontSizeChange(Number(e.target.value))}/>
-          <button type="button" onClick={()=>onFontSizeChange(fontSize+1)} title="Increase all text size">+</button>
+          <button type="button" onClick={()=>onFontSizeChange(fontSize-1)}>−</button>
+          <input type="range" min="12" max="24" step="1" value={fontSize}
+            onChange={e=>onFontSizeChange(Number(e.target.value))}/>
+          <button type="button" onClick={()=>onFontSizeChange(fontSize+1)}>+</button>
         </div>
-        <small>हे headings, text आणि numbers यांचा screen size बदलते.</small>
       </div>
-      <div className="font-preview" style={{fontFamily:fontStack(value),fontSize:`${fontSize}px`}}>
+
+      <div className="element-size-grid">
+        {fields.map(([key,label])=>{
+          const v=Number(fontSizes?.[key]||12);
+          return <label className="element-size-item" key={key}>
+            <span>{label}</span>
+            <div>
+              <input
+                type="number"
+                min="7"
+                max="40"
+                step="0.5"
+                value={v}
+                onChange={e=>onFontSizeFieldChange(key,e.target.value)}
+              />
+              <span className="px-label">px</span>
+            </div>
+          </label>;
+        })}
+      </div>
+
+      <div className="font-preview" style={{fontFamily:fontStack(value),fontSize:`${fontSizes?.staffName||16}px`}}>
         <b>Preview / नमुना</b>
-        <div>श्री सागर वाल्हेकर — सकाळ (M) — सोम — 123</div>
+        <div>ससून सर्वोपचार रुग्णालय, पुणे</div>
+        <div>मनोरुग्णशास्त्र विभाग</div>
+        <div>कक्ष क्र. २६</div>
+        <div>अ क्र &nbsp; रोल नं &nbsp; नावे &nbsp; सोम 17/08 &nbsp; मंगळ 18/08 &nbsp; नैर &nbsp; जमा &nbsp; रुजू</div>
+        <div>श्री सागर वाल्हेकर — सकाळ (M) — 123</div>
       </div>
-      <div className="modal-foot"><button onClick={onClose}>Done / पूर्ण</button></div>
+
+      <div className="modal-foot">
+        <button onClick={onClose}>Done / पूर्ण</button>
+      </div>
     </div>
   </div>;
 }
@@ -1903,8 +1988,53 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
     });
   });
 
+  const fs = {
+    hospital:18,
+    department:18,
+    ward:16,
+    title:15,
+    date:13,
+    headerSr:11,
+    headerRoll:11,
+    headerName:11,
+    headerDay:11,
+    headerExtra:11,
+    group:12,
+    rollNumber:10.5,
+    staffName:16,
+    dutyCode:12,
+    extraValue:10.5,
+    summaryLabel:10.5,
+    summaryDay:11,
+    summaryCount:11,
+    summaryAbbr:8,
+    ...(roster.fontSizes||{})
+  };
+
+  const fontVars = {
+    "--fs-hospital":`${fs.hospital}px`,
+    "--fs-department":`${fs.department}px`,
+    "--fs-ward":`${fs.ward}px`,
+    "--fs-title":`${fs.title}px`,
+    "--fs-date":`${fs.date}px`,
+    "--fs-header-sr":`${fs.headerSr}px`,
+    "--fs-header-roll":`${fs.headerRoll}px`,
+    "--fs-header-name":`${fs.headerName}px`,
+    "--fs-header-day":`${fs.headerDay}px`,
+    "--fs-header-extra":`${fs.headerExtra}px`,
+    "--fs-group":`${fs.group}px`,
+    "--fs-roll":`${fs.rollNumber}px`,
+    "--fs-name":`${fs.staffName}px`,
+    "--fs-duty":`${fs.dutyCode}px`,
+    "--fs-extra":`${fs.extraValue}px`,
+    "--fs-summary-label":`${fs.summaryLabel}px`,
+    "--fs-summary-day":`${fs.summaryDay}px`,
+    "--fs-summary-count":`${fs.summaryCount}px`,
+    "--fs-summary-abbr":`${fs.summaryAbbr}px`
+  };
+
   return (
-    <div className="paper" ref={ref} style={{fontFamily:fontStack(roster.fontFamily)}}>
+    <div className="paper" ref={ref} style={{fontFamily:fontStack(roster.fontFamily),...fontVars}}>
 
       <div className="print-header">
 
@@ -1952,7 +2082,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
             <th className="p-name">नावे</th>
 
             {labels.map((d,i)=>
-              <th key={i}>
+              <th key={i} className="p-day">
                 {d.short}
                 <small>{d.date}</small>
               </th>
@@ -1997,7 +2127,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
           <col className="col-sr" />
           <col className="col-roll" />
           <col className="col-name" />
-          {labels.map((_,i)=><col className="col-day" key={`summary-day-${i}`} />)}
+          {labels.map((_,i)=><col className="col-day" key={i} />)}
           <col className="col-extra" />
           <col className="col-extra" />
           <col className="col-extra" />
@@ -2010,15 +2140,14 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
             </th>
 
             {labels.map((d,i)=>
-              <th key={i}>
+              <th key={i} className="summary-day">
                 {d.short}
                 <small>{d.date}</small>
               </th>
             )}
-
-            <th className="summary-extra" aria-hidden="true"></th>
-            <th className="summary-extra" aria-hidden="true"></th>
-            <th className="summary-extra" aria-hidden="true"></th>
+            <th className="summary-extra">नैर</th>
+            <th className="summary-extra">जमा</th>
+            <th className="summary-extra">रुजू</th>
 
           </tr>
         </thead>
@@ -2028,7 +2157,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
           {roster.duties.map(duty=>
             <tr key={duty.key}>
 
-              <th className="summary-duty" colSpan={3}>
+              <th className="summary-duty summary-label" colSpan={3}>
                 {duty.label}
                 <span className="summary-abbr">
                   ({duty.abbr})
@@ -2036,34 +2165,32 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
               </th>
 
               {labels.map((_,dayIndex)=>
-                <td key={dayIndex}>
+                <td key={dayIndex} className="summary-count">
                   {dailyDutyCounts[dayIndex][duty.key]||""}
                 </td>
               )}
-
-              <td className="summary-extra" aria-hidden="true"></td>
-              <td className="summary-extra" aria-hidden="true"></td>
-              <td className="summary-extra" aria-hidden="true"></td>
+              <td className="summary-extra"></td>
+              <td className="summary-extra"></td>
+              <td className="summary-extra"></td>
 
             </tr>
           )}
 
           <tr className="grand-total">
-            <th className="summary-duty" colSpan={3}>
+            <th className="summary-duty summary-label" colSpan={3}>
               एकूण
             </th>
 
             {labels.map((_,dayIndex)=>
-              <td key={dayIndex}>
+              <td key={dayIndex} className="summary-count">
                 {Object.values(
                   dailyDutyCounts[dayIndex]
                 ).reduce((a,b)=>a+b,0)||""}
               </td>
             )}
-
-            <td className="summary-extra" aria-hidden="true"></td>
-            <td className="summary-extra" aria-hidden="true"></td>
-            <td className="summary-extra" aria-hidden="true"></td>
+            <td className="summary-extra"></td>
+            <td className="summary-extra"></td>
+            <td className="summary-extra"></td>
           </tr>
 
         </tbody>
@@ -2078,9 +2205,9 @@ function PrintableRow({employee,index,duties}) {
   return (
     <tr>
 
-      <td>{index+1}</td>
+      <td className="print-sr-cell">{index+1}</td>
 
-      <td>{employee.rollNo}</td>
+      <td className="print-roll-cell">{employee.rollNo}</td>
 
       <td
         className="print-name"
