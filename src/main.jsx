@@ -1518,14 +1518,425 @@ function LoginScreen({onLogin}){
   </div>;
 }
 
+
+function AdminDashboard({user,onLogout}){
+  const [wards,setWards]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState("");
+  const [showCreate,setShowCreate]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [form,setForm]=useState({
+    name:"",
+    username:"",
+    password:""
+  });
+
+  const loadWards=async()=>{
+    setLoading(true);
+    setError("");
+    try{
+      const res=await fetch("/api/list-wards",{credentials:"include"});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(data.error||"Unable to load wards.");
+      const list=Array.isArray(data) ? data : (data.wards || data.data || []);
+      setWards(list);
+    }catch(err){
+      setError(err.message||"Unable to load wards.");
+    }finally{
+      setLoading(false);
+    }
+  };
+
+  useEffect(()=>{ loadWards(); },[]);
+
+  const createWard=async e=>{
+    e.preventDefault();
+    if(!form.name.trim() || !form.username.trim() || !form.password){
+      setError("Ward name, username and password are required.");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+
+    try{
+      const res=await fetch("/api/create-ward",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        credentials:"include",
+        body:JSON.stringify({
+          name:form.name.trim(),
+          ward:form.name.trim(),
+          username:form.username.trim(),
+          password:form.password
+        })
+      });
+
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(data.error||"Unable to create ward.");
+
+      setForm({name:"",username:"",password:""});
+      setShowCreate(false);
+      await loadWards();
+    }catch(err){
+      setError(err.message||"Unable to create ward.");
+    }finally{
+      setBusy(false);
+    }
+  };
+
+  const deleteWard=async ward=>{
+    const id=ward.id || ward.user_id || ward.ward_id;
+    if(!id) return;
+
+    if(!window.confirm(`Delete ${ward.name || ward.ward || "this ward"}?`)) return;
+
+    try{
+      const res=await fetch("/api/delete-ward",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        credentials:"include",
+        body:JSON.stringify({
+          id,
+          user_id:ward.user_id || id,
+          ward_id:ward.ward_id || id
+        })
+      });
+
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(data.error||"Unable to delete ward.");
+      await loadWards();
+    }catch(err){
+      setError(err.message||"Unable to delete ward.");
+    }
+  };
+
+  const toggleWard=async ward=>{
+    const id=ward.id || ward.user_id || ward.ward_id;
+    if(!id) return;
+
+    const active =
+      typeof ward.active==="boolean" ? ward.active :
+      typeof ward.is_active==="boolean" ? ward.is_active :
+      true;
+
+    try{
+      const res=await fetch("/api/update-ward",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        credentials:"include",
+        body:JSON.stringify({
+          id,
+          user_id:ward.user_id || id,
+          ward_id:ward.ward_id || id,
+          active:!active,
+          is_active:!active
+        })
+      });
+
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(data.error||"Unable to update ward.");
+      await loadWards();
+    }catch(err){
+      setError(err.message||"Unable to update ward.");
+    }
+  };
+
+  const openWard=ward=>{
+    const wardId=ward.id || ward.ward_id || ward.user_id;
+    if(!wardId) return;
+
+    /*
+     * Keep the selected ward for the administrator.
+     * The roster editor can use this value when the
+     * ward-specific cloud roster is opened.
+     */
+    sessionStorage.setItem("admin_selected_ward_id",String(wardId));
+    sessionStorage.setItem(
+      "admin_selected_ward_name",
+      String(ward.name || ward.ward || ward.ward_name || "")
+    );
+
+    window.location.href=`/?ward=${encodeURIComponent(wardId)}`;
+  };
+
+  return (
+    <div className="app" style={{minHeight:"100vh",background:"#f5f7fa"}}>
+      <header className="topbar">
+        <div>
+          <div className="brand">Duty Roster</div>
+          <div className="brand-sub">Administrator / Ward Manager</div>
+        </div>
+
+        <div className="top-actions">
+          <span className="logged-user">
+            {user?.name || user?.username || "Administrator"}
+          </span>
+
+          <button onClick={onLogout} className="logout-btn">
+            <LogOut size={16}/>
+            Logout
+          </button>
+        </div>
+      </header>
+
+      <main style={{
+        maxWidth:1100,
+        margin:"0 auto",
+        padding:"28px 18px"
+      }}>
+        <div style={{
+          background:"#fff",
+          borderRadius:16,
+          padding:24,
+          boxShadow:"0 8px 30px rgba(0,0,0,.08)"
+        }}>
+          <div style={{
+            display:"flex",
+            justifyContent:"space-between",
+            alignItems:"center",
+            gap:16,
+            flexWrap:"wrap",
+            marginBottom:20
+          }}>
+            <div>
+              <h1 style={{margin:"0 0 6px"}}>Administrator / Ward Manager</h1>
+              <p style={{margin:0,color:"#667085"}}>
+                सर्व तयार केलेले wards येथे manage करा.
+              </p>
+            </div>
+
+            <button
+              className="dark-btn"
+              onClick={()=>setShowCreate(true)}
+            >
+              <Plus size={16}/>
+              Create New Ward
+            </button>
+          </div>
+
+          {error && (
+            <div style={{
+              padding:12,
+              marginBottom:16,
+              borderRadius:8,
+              background:"#fff1f2",
+              color:"#b42318"
+            }}>
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div style={{padding:30,textAlign:"center"}}>
+              Loading wards...
+            </div>
+          ) : (
+            <>
+              <h2 style={{fontSize:18,marginBottom:12}}>
+                Created Wards <span style={{fontWeight:400,color:"#667085"}}>{wards.length} wards</span>
+              </h2>
+
+              {wards.length===0 ? (
+                <div style={{
+                  padding:30,
+                  textAlign:"center",
+                  border:"1px dashed #d0d5dd",
+                  borderRadius:12,
+                  color:"#667085"
+                }}>
+                  <b>No wards created yet.</b>
+                  <div style={{marginTop:6}}>
+                    Create your first ward to start using the roster.
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  display:"grid",
+                  gap:10
+                }}>
+                  {wards.map((ward,index)=>{
+                    const id=ward.id || ward.ward_id || ward.user_id || index;
+                    const name=ward.name || ward.ward || ward.ward_name || `Ward ${index+1}`;
+                    const username=ward.username || ward.email || "";
+                    const active =
+                      typeof ward.active==="boolean" ? ward.active :
+                      typeof ward.is_active==="boolean" ? ward.is_active :
+                      true;
+
+                    return (
+                      <div key={id} style={{
+                        display:"flex",
+                        alignItems:"center",
+                        justifyContent:"space-between",
+                        gap:12,
+                        flexWrap:"wrap",
+                        padding:16,
+                        border:"1px solid #e4e7ec",
+                        borderRadius:12
+                      }}>
+                        <div>
+                          <b>{name}</b>
+                          {username && (
+                            <div style={{fontSize:13,color:"#667085",marginTop:3}}>
+                              Username: {username}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{
+                          display:"flex",
+                          gap:8,
+                          flexWrap:"wrap"
+                        }}>
+                          <button onClick={()=>openWard(ward)}>
+                            Open Roster
+                          </button>
+
+                          <button onClick={()=>toggleWard(ward)}>
+                            {active ? "Deactivate" : "Activate"}
+                          </button>
+
+                          <button
+                            className="delete-btn"
+                            onClick={()=>deleteWard(ward)}
+                          >
+                            <Trash2 size={15}/>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </main>
+
+      {showCreate && (
+        <div className="modal-backdrop">
+          <form
+            className="ward-modal"
+            onSubmit={createWard}
+          >
+            <div className="modal-head">
+              <div>
+                <h2>Create New Ward</h2>
+                <p>Create one login for this ward.</p>
+              </div>
+              <button
+                type="button"
+                onClick={()=>setShowCreate(false)}
+              >
+                <X size={18}/>
+              </button>
+            </div>
+
+            <div className="ward-modal-body">
+              <label>
+                <span>Ward Name</span>
+                <input
+                  value={form.name}
+                  onChange={e=>setForm(f=>({...f,name:e.target.value}))}
+                  placeholder="Ward 26"
+                  required
+                />
+              </label>
+
+              <label>
+                <span>Username</span>
+                <input
+                  value={form.username}
+                  onChange={e=>setForm(f=>({...f,username:e.target.value}))}
+                  placeholder="ward26"
+                  autoComplete="off"
+                  required
+                />
+              </label>
+
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={e=>setForm(f=>({...f,password:e.target.value}))}
+                  placeholder="Create password"
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="modal-foot">
+              <button
+                type="button"
+                onClick={()=>setShowCreate(false)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                className="dark-btn"
+                disabled={busy}
+              >
+                {busy ? "Creating..." : "Create Ward"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AppShell(){
-  const [auth,setAuth]=useState(null); const [checking,setChecking]=useState(true);
+  const [auth,setAuth]=useState(null);
+  const [checking,setChecking]=useState(true);
+
+  const loadAuth=async()=>{
+    try{
+      const response=await fetch("/api/me",{credentials:"include"});
+      const data=await response.json().catch(()=>null);
+      setAuth(response.ok ? (data?.user || null) : null);
+    }catch{
+      setAuth(null);
+    }finally{
+      setChecking(false);
+    }
+  };
+
   useEffect(()=>{
-    fetch("/api/me",{credentials:"include"}).then(r=>r.ok?r.json():null).then(data=>setAuth(data?.user||null)).catch(()=>setAuth(null)).finally(()=>setChecking(false));
+    loadAuth();
   },[]);
-  const logout=async()=>{await fetch("/api/logout",{method:"POST",credentials:"include"}).catch(()=>{});setAuth(null);};
-  if(checking) return <div className="login-loading">Loading Duty Roster...</div>;
-  if(!auth) return <LoginScreen onLogin={setAuth}/>;
+
+  const logout=async()=>{
+    await fetch("/api/logout",{
+      method:"POST",
+      credentials:"include"
+    }).catch(()=>{});
+    setAuth(null);
+  };
+
+  if(checking){
+    return <div className="login-loading">Loading Duty Roster...</div>;
+  }
+
+  if(!auth){
+    return <LoginScreen onLogin={user=>{
+      setAuth(user);
+      setChecking(false);
+    }}/>;
+  }
+
+  const role=String(auth.role||"").trim().toLowerCase();
+
+  if(role==="admin" || role==="administrator"){
+    return <AdminDashboard user={auth} onLogout={logout}/>;
+  }
+
   return <App user={auth} onLogout={logout}/>;
 }
 
