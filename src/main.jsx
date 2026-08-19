@@ -261,8 +261,6 @@ function App({user,onLogout,cloudWardId=null,onBackToAdmin=null}) {
   const paperRef=useRef(null);
   const [showHistory,setShowHistory]=useState(false);
   const [showFontSettings,setShowFontSettings]=useState(false);
-  const [cloudLoading,setCloudLoading]=useState(false);
-const [cloudSaving,setCloudSaving]=useState(false);
   const [cloudLoading,setCloudLoading]=useState(true);
   const [cloudSaving,setCloudSaving]=useState(false);
   const [cloudError,setCloudError]=useState("");
@@ -274,63 +272,6 @@ const [cloudSaving,setCloudSaving]=useState(false);
   useEffect(()=>{
     localStorage.setItem(cloudStorageKey,JSON.stringify(roster));
   },[roster,cloudStorageKey]);
-  useEffect(()=>{
-  let cancelled=false;
-
-  const loadCloudRoster=async()=>{
-    if(!user || user.role!=="ward") return;
-
-    setCloudLoading(true);
-
-    try{
-      const response=await fetch(
-        "/api/ward-roster",
-        {
-          method:"GET",
-          credentials:"include"
-        }
-      );
-
-      const data=await response.json();
-
-      if(!response.ok){
-        throw new Error(
-          data?.error || "Could not load cloud roster."
-        );
-      }
-
-      if(
-        !cancelled &&
-        data?.roster &&
-        Object.keys(data.roster).length>0
-      ){
-        setRoster(normalizeRoster(data.roster));
-        setTab("editor");
-      }
-    }catch(error){
-      console.error(
-        "Cloud roster loading failed:",
-        error
-      );
-
-      if(!cancelled){
-        alert(
-          "Cloud roster load झाला नाही. सध्या local roster वापरला जात आहे."
-        );
-      }
-    }finally{
-      if(!cancelled){
-        setCloudLoading(false);
-      }
-    }
-  };
-
-  loadCloudRoster();
-
-  return ()=>{
-    cancelled=true;
-  };
-},[user]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -739,77 +680,9 @@ const [cloudSaving,setCloudSaving]=useState(false);
     setTab("editor");
   };
 
- const save=async()=>{
-  const next={
-    ...roster,
-    savedAt:new Date().toISOString()
-  };
-
-  setRoster(next);
-
-  // Always keep a local backup.
-  localStorage.setItem(
-    "marathi-duty-roster-v7",
-    JSON.stringify(next)
-  );
-
-  // Cloud save for ward users.
-  if(user?.role==="ward"){
-    setCloudSaving(true);
-
-    try{
-      const response=await fetch(
-        "/api/ward-roster",
-        {
-          method:"PUT",
-          credentials:"include",
-          headers:{
-            "Content-Type":"application/json"
-          },
-          body:JSON.stringify({
-            roster:next
-          })
-        }
-      );
-
-      const data=await response.json();
-
-      if(!response.ok){
-        throw new Error(
-          data?.error ||
-          "Cloud save failed."
-        );
-      }
-
-      setSavedMessage(true);
-
-      setTimeout(()=>{
-        setSavedMessage(false);
-      },1800);
-
-    }catch(error){
-      console.error(
-        "Cloud roster save failed:",
-        error
-      );
-
-      alert(
-        `Cloud save failed: ${error.message}`
-      );
-    }finally{
-      setCloudSaving(false);
-    }
-
-    return;
-  }
-
-  // Administrator/local fallback.
-  setSavedMessage(true);
-
-  setTimeout(()=>{
-    setSavedMessage(false);
-  },1800);
-};
+  const save=async()=>{
+    const next={...roster,savedAt:new Date().toISOString()};
+    setRoster(next);
     localStorage.setItem(cloudStorageKey,JSON.stringify(next));
 
     setCloudSaving(true);
