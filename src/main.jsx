@@ -40,6 +40,10 @@ function newEmployee(group="अधिपरिचारिका") {
     rollNo:"",
     englishName:"",
     marathiName:"",
+    gender:"male",
+    nair:"",
+    jama:"",
+    ruju:"",
     marathiFontSize:16,
     marathiBold:false,
     duties:Array(7).fill(""),
@@ -64,6 +68,7 @@ function blankRoster() {
     ],
     duties:DEFAULT_DUTIES.map(d=>({...d})),
     fontFamily:"Mukta",
+    globalFontSize:16,
     savedAt:null
   };
 }
@@ -96,7 +101,11 @@ function normalizeRoster(data={}) {
           ? [...e.customNotes,...Array(7).fill("")].slice(0,7)
           : Array(7).fill(""),
         marathiFontSize:e.marathiFontSize||16,
-        marathiBold:!!e.marathiBold
+        marathiBold:!!e.marathiBold,
+        gender:e.gender||"male",
+        nair:e.nair||"",
+        jama:e.jama||"",
+        ruju:e.ruju||""
       }))
     : base.employees;
 
@@ -104,6 +113,7 @@ function normalizeRoster(data={}) {
     ...base,
     ...data,
     fontFamily:data.fontFamily||base.fontFamily,
+    globalFontSize:Math.max(12,Math.min(24,Number(data.globalFontSize)||base.globalFontSize)),
     duties,
     posts,
     employees,
@@ -145,6 +155,20 @@ function transliterateName(name) {
   } catch {
     return name;
   }
+}
+
+function honorific(gender){
+  if(gender==="female") return "श्रीमती";
+  if(gender==="male") return "श्री";
+  return "";
+}
+
+function displayStaffName(employee){
+  const name=cleanMarathiText(employee?.marathiName || employee?.englishName || "");
+  if(!name) return "—";
+  const clean=name.replace(/^(श्री\.?|श्रीमती\.?|कु\.?|सौ\.?)\s*/," ").trim();
+  const prefix=honorific(employee?.gender);
+  return prefix ? `${prefix} ${clean}` : clean;
 }
 
 function App({user,onLogout}) {
@@ -655,7 +679,7 @@ function App({user,onLogout}) {
     }
   };
 
-  return <div className="app" style={{"--marathi-font":fontStack(roster.fontFamily)}}>
+  return <div className="app" style={{"--marathi-font":fontStack(roster.fontFamily),"--ui-scale":(roster.globalFontSize||16)/16,"--ui-inverse-scale":16/(roster.globalFontSize||16)}}>
 
     <header className="topbar">
       <div>
@@ -871,8 +895,12 @@ function App({user,onLogout}) {
                   <th>#</th>
                   <th>वर्ग</th>
                   <th>Roll No.</th>
+                  <th>लिंग / Gender</th>
                   <th>English Name</th>
                   <th>मराठी नाव / Style</th>
+                  <th>नैर</th>
+                  <th>जमा</th>
+                  <th>रुजू</th>
                   <th>Insert / Delete</th>
                 </tr>
               </thead>
@@ -907,6 +935,18 @@ function App({user,onLogout}) {
                       placeholder="2/114"
                       onChange={x=>editEmployee(e.id,"rollNo",x.target.value)}
                     />
+                  </td>
+
+                  <td>
+                    <select
+                      value={e.gender||"male"}
+                      onChange={x=>editEmployee(e.id,"gender",x.target.value)}
+                      title="Gender / लिंग"
+                    >
+                      <option value="male">पुरुष</option>
+                      <option value="female">स्त्री</option>
+                      <option value="other">इतर</option>
+                    </select>
                   </td>
 
                   <td>
@@ -973,6 +1013,10 @@ function App({user,onLogout}) {
                     </div>
 
                   </td>
+
+                  <td><input value={e.nair||""} placeholder="" onChange={x=>editEmployee(e.id,"nair",x.target.value)} /></td>
+                  <td><input value={e.jama||""} placeholder="" onChange={x=>editEmployee(e.id,"jama",x.target.value)} /></td>
+                  <td><input value={e.ruju||""} placeholder="" onChange={x=>editEmployee(e.id,"ruju",x.target.value)} /></td>
 
                   <td>
 
@@ -1070,7 +1114,7 @@ function App({user,onLogout}) {
                 {roster.employees.map(e=><tr key={e.id}>
 
                   <td className="assign-name">
-                    {e.marathiName||e.englishName||"—"}
+                    {displayStaffName(e)}
                   </td>
 
                   {e.duties.map((v,i)=><td key={i}>
@@ -1254,6 +1298,8 @@ function App({user,onLogout}) {
       <FontSettingsModal
         value={roster.fontFamily}
         onChange={v=>update("fontFamily",v)}
+        fontSize={roster.globalFontSize||16}
+        onFontSizeChange={v=>update("globalFontSize",Math.max(12,Math.min(24,v)))}
         onClose={()=>setShowFontSettings(false)}
       />
     }
@@ -1274,7 +1320,7 @@ function fontStack(font){
   return '"Mukta","Noto Sans Devanagari","Nirmala UI",sans-serif';
 }
 
-function FontSettingsModal({value,onChange,onClose}){
+function FontSettingsModal({value,onChange,fontSize,onFontSizeChange,onClose}){
   return <div className="modal-backdrop">
     <div className="font-modal">
       <div className="modal-head">
@@ -1292,9 +1338,21 @@ function FontSettingsModal({value,onChange,onClose}){
           <span className="font-option-sample">{font.sample}</span>
         </button>)}
       </div>
-      <div className="font-preview" style={{fontFamily:fontStack(value)}}>
+      <div className="global-size-control">
+        <div className="global-size-head">
+          <b>सर्व मजकूराचा आकार / Overall Text Size</b>
+          <span>{fontSize}px</span>
+        </div>
+        <div className="global-size-row">
+          <button type="button" onClick={()=>onFontSizeChange(fontSize-1)} title="Decrease all text size">−</button>
+          <input type="range" min="12" max="24" step="1" value={fontSize} onChange={e=>onFontSizeChange(Number(e.target.value))}/>
+          <button type="button" onClick={()=>onFontSizeChange(fontSize+1)} title="Increase all text size">+</button>
+        </div>
+        <small>हे headings, text आणि numbers यांचा screen size बदलते.</small>
+      </div>
+      <div className="font-preview" style={{fontFamily:fontStack(value),fontSize:`${fontSize}px`}}>
         <b>Preview / नमुना</b>
-        <div>श्री सागर वाल्हेकर — सकाळ (M) — सोम</div>
+        <div>श्री सागर वाल्हेकर — सकाळ (M) — सोम — 123</div>
       </div>
       <div className="modal-foot"><button onClick={onClose}>Done / पूर्ण</button></div>
     </div>
@@ -1881,6 +1939,9 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
           <col className="col-roll" />
           <col className="col-name" />
           {labels.map((_,i)=><col className="col-day" key={i} />)}
+          <col className="col-extra" />
+          <col className="col-extra" />
+          <col className="col-extra" />
         </colgroup>
 
         <thead>
@@ -1896,7 +1957,9 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                 <small>{d.date}</small>
               </th>
             )}
-
+            <th className="p-extra">नैर</th>
+            <th className="p-extra">जमा</th>
+            <th className="p-extra">रुजू</th>
 
           </tr>
         </thead>
@@ -1907,7 +1970,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
             <React.Fragment key={section.group}>
 
               <tr className="group-row">
-                <td colSpan={10}>
+                <td colSpan={13}>
                   {section.group}
                 </td>
               </tr>
@@ -2011,7 +2074,7 @@ function PrintableRow({employee,index,duties}) {
           fontWeight:employee.marathiBold?700:400
         }}
       >
-        {employee.marathiName||employee.englishName}
+        {displayStaffName(employee)}
       </td>
 
       {employee.duties.map((key,i)=>{
@@ -2028,6 +2091,10 @@ function PrintableRow({employee,index,duties}) {
           </td>
         );
       })}
+
+      <td className="print-extra">{employee.nair||""}</td>
+      <td className="print-extra">{employee.jama||""}</td>
+      <td className="print-extra">{employee.ruju||""}</td>
 
     </tr>
   );
