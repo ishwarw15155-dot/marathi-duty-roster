@@ -1,39 +1,36 @@
 import { supabaseAdmin } from "./_supabaseAdmin.js";
 
-function getToken(req) {
+function getAccessToken(req) {
   const cookie = req.headers.cookie || "";
-  const match = cookie.match(/(?:^|;\s*)duty_auth=([^;]+)/);
 
-  return match ? decodeURIComponent(match[1]) : null;
+  const match = cookie.match(
+    /(?:^|;\s*)sb_access_token=([^;]+)/
+  );
+
+  return match
+    ? decodeURIComponent(match[1])
+    : null;
 }
 
 async function getCurrentUser(req) {
-  const token = getToken(req);
+  const accessToken = getAccessToken(req);
 
-  if (!token) {
+  if (!accessToken) {
     return null;
   }
 
   const {
     data: { user },
     error,
-  } = await supabaseAdmin.auth.getUser(token);
+  } = await supabaseAdmin.auth.getUser(
+    accessToken
+  );
 
   if (error || !user) {
     return null;
   }
 
   return user;
-}
-
-async function isAdmin(userId) {
-  const { data, error } = await supabaseAdmin
-    .from("profiles")
-    .select("role")
-    .eq("user_id", userId)
-    .single();
-
-  return !error && data?.role === "admin";
 }
 
 export default async function handler(req, res) {
@@ -52,9 +49,20 @@ export default async function handler(req, res) {
       });
     }
 
-    const admin = await isAdmin(user.id);
+    const {
+      data: profile,
+      error: profileError,
+    } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
 
-    if (!admin) {
+    if (
+      profileError ||
+      !profile ||
+      profile.role !== "admin"
+    ) {
       return res.status(403).json({
         error: "Administrator access required",
       });
