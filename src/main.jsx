@@ -240,8 +240,15 @@ function displayStaffName(employee){
   return prefix ? `${prefix} ${clean}` : clean;
 }
 
-function App({user,onLogout,cloudWardId=null,onBackToAdmin=null}) {
+function App({user,onLogout}) {
   const [roster,setRoster]=useState(()=>{
+    // Ward users must start from a clean local state.
+    // Their actual roster is loaded from the cloud using their ward ID.
+    if(user?.role === "ward"){
+      return blankRoster();
+    }
+
+    // Administrator can still use the existing browser-local roster.
     try {
       const raw=localStorage.getItem("marathi-duty-roster-v7")
         || localStorage.getItem("marathi-duty-roster-v6") || localStorage.getItem("marathi-duty-roster-v5");
@@ -261,53 +268,10 @@ function App({user,onLogout,cloudWardId=null,onBackToAdmin=null}) {
   const paperRef=useRef(null);
   const [showHistory,setShowHistory]=useState(false);
   const [showFontSettings,setShowFontSettings]=useState(false);
-  const [cloudLoading,setCloudLoading]=useState(true);
-  const [cloudSaving,setCloudSaving]=useState(false);
-  const [cloudError,setCloudError]=useState("");
-
-  const cloudStorageKey = cloudWardId
-    ? `marathi-duty-roster-cloud-${cloudWardId}`
-    : "marathi-duty-roster-ward";
 
   useEffect(()=>{
-    localStorage.setItem(cloudStorageKey,JSON.stringify(roster));
-  },[roster,cloudStorageKey]);
-
-  useEffect(()=>{
-    let cancelled=false;
-
-    const loadCloudRoster=async()=>{
-      setCloudLoading(true);
-      setCloudError("");
-
-      try{
-        const url=cloudWardId
-          ? `/api/ward-roster?wardId=${encodeURIComponent(cloudWardId)}`
-          : "/api/ward-roster";
-
-        const res=await fetch(url,{credentials:"include"});
-        const data=await res.json().catch(()=>({}));
-
-        if(!res.ok){
-          throw new Error(data.error||"Cloud roster could not be loaded");
-        }
-
-        if(!cancelled && data.roster && Object.keys(data.roster).length){
-          setRoster(normalizeRoster(data.roster));
-          localStorage.setItem(cloudStorageKey,JSON.stringify(normalizeRoster(data.roster)));
-        }
-      }catch(err){
-        if(!cancelled){
-          setCloudError(err.message||"Cloud connection failed");
-        }
-      }finally{
-        if(!cancelled) setCloudLoading(false);
-      }
-    };
-
-    loadCloudRoster();
-    return ()=>{cancelled=true;};
-  },[cloudWardId,cloudStorageKey]);
+    localStorage.setItem("marathi-duty-roster-v7",JSON.stringify(roster));
+  },[roster]);
 
   const dayLabels=useMemo(()=>makeDateLabels(roster.from),[roster.from]);
 
@@ -680,39 +644,12 @@ function App({user,onLogout,cloudWardId=null,onBackToAdmin=null}) {
     setTab("editor");
   };
 
-  const save=async()=>{
+  const save=()=>{
     const next={...roster,savedAt:new Date().toISOString()};
     setRoster(next);
-    localStorage.setItem(cloudStorageKey,JSON.stringify(next));
-
-    setCloudSaving(true);
-    setCloudError("");
-
-    try{
-      const res=await fetch("/api/ward-roster",{
-        method:"PUT",
-        headers:{"Content-Type":"application/json"},
-        credentials:"include",
-        body:JSON.stringify({
-          ...(cloudWardId ? {wardId:cloudWardId} : {}),
-          roster:next
-        })
-      });
-
-      const data=await res.json().catch(()=>({}));
-
-      if(!res.ok){
-        throw new Error(data.error||"Cloud save failed");
-      }
-
-      setSavedMessage(true);
-      setTimeout(()=>setSavedMessage(false),1800);
-    }catch(err){
-      setCloudError(err.message||"Cloud save failed");
-      alert(`Cloud save failed: ${err.message||"Unknown error"}\\n\\nLocal copy was saved on this device.`);
-    }finally{
-      setCloudSaving(false);
-    }
+    localStorage.setItem("marathi-duty-roster-v7",JSON.stringify(next));
+    setSavedMessage(true);
+    setTimeout(()=>setSavedMessage(false),1800);
   };
 
   const newRoster=()=>{
@@ -835,27 +772,7 @@ function App({user,onLogout,cloudWardId=null,onBackToAdmin=null}) {
       </div>
 
       <div className="top-actions">
-        <span className="logged-user">
-          {user?.name||user?.username}
-          {cloudWardId ? " • Ward" : ""}
-        </span>
-
-        {onBackToAdmin && (
-          <button onClick={onBackToAdmin}>
-            <FolderOpen size={16}/>
-            Ward Manager
-          </button>
-        )}
-
-        {cloudError && (
-          <span className="cloud-status-error" title={cloudError}>
-            Cloud: Error
-          </span>
-        )}
-
-        {cloudLoading && (
-          <span className="cloud-status">Loading cloud…</span>
-        )}
+        <span className="logged-user">{user?.name||user?.username}</span>
 
         <button onClick={onLogout} className="logout-btn">
           <LogOut size={16}/>
@@ -872,7 +789,7 @@ function App({user,onLogout,cloudWardId=null,onBackToAdmin=null}) {
           className={savedMessage?"saved-btn":""}
         >
           {savedMessage?<Check size={16}/>:<Save size={16}/>}
-          {cloudSaving?"Saving…":savedMessage?"Saved":"Save"}
+          {savedMessage?"Saved":"Save"}
         </button>
 
         <button onClick={print}>
@@ -1601,340 +1518,15 @@ function LoginScreen({onLogin}){
   </div>;
 }
 
-
-function AdminPanel({user,onLogout,onOpenWard}){
-  const [wards,setWards]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [error,setError]=useState("");
-  const [showForm,setShowForm]=useState(false);
-  const [editing,setEditing]=useState(null);
-  const [form,setForm]=useState({
-    wardName:"",
-    wardCode:"",
-    username:"",
-    password:"",
-    active:true
-  });
-
-  const loadWards=async()=>{
-    setLoading(true);
-    setError("");
-    try{
-      const res=await fetch("/api/list-wards",{credentials:"include"});
-      const data=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(data.error||"Could not load wards");
-      setWards(data.wards||[]);
-    }catch(err){
-      setError(err.message||"Could not load wards");
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  useEffect(()=>{loadWards();},[]);
-
-  const openCreate=()=>{
-    setEditing(null);
-    setForm({
-      wardName:"",
-      wardCode:"",
-      username:"",
-      password:"",
-      active:true
-    });
-    setShowForm(true);
-  };
-
-  const openEdit=(ward)=>{
-    setEditing(ward);
-    setForm({
-      wardName:ward.ward_name||"",
-      wardCode:ward.ward_code||"",
-      username:ward.username||"",
-      password:"",
-      active:ward.active!==false
-    });
-    setShowForm(true);
-  };
-
-  const submit=async e=>{
-    e.preventDefault();
-    setError("");
-
-    try{
-      const endpoint=editing?"/api/update-ward":"/api/create-ward";
-      const method=editing?"PATCH":"POST";
-
-      const body=editing
-        ? {
-            wardId:editing.id,
-            wardName:form.wardName,
-            wardCode:form.wardCode,
-            username:form.username,
-            ...(form.password ? {password:form.password}:{}),
-            active:form.active
-          }
-        : {
-            wardName:form.wardName,
-            wardCode:form.wardCode,
-            username:form.username,
-            password:form.password
-          };
-
-      const res=await fetch(endpoint,{
-        method,
-        headers:{"Content-Type":"application/json"},
-        credentials:"include",
-        body:JSON.stringify(body)
-      });
-
-      const data=await res.json().catch(()=>({}));
-
-      if(!res.ok) throw new Error(data.error||"Ward operation failed");
-
-      setShowForm(false);
-      setEditing(null);
-      await loadWards();
-    }catch(err){
-      setError(err.message||"Ward operation failed");
-    }
-  };
-
-  const deleteWard=async ward=>{
-    if(!confirm(`कक्ष "${ward.ward_name}" कायमचा हटवायचा आहे का?\\n\\nया कक्षाचा roster/history देखील हटवला जाऊ शकतो.`)) return;
-
-    setError("");
-
-    try{
-      const res=await fetch("/api/delete-ward",{
-        method:"DELETE",
-        headers:{"Content-Type":"application/json"},
-        credentials:"include",
-        body:JSON.stringify({wardId:ward.id})
-      });
-
-      const data=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(data.error||"Could not delete ward");
-
-      await loadWards();
-    }catch(err){
-      setError(err.message||"Could not delete ward");
-    }
-  };
-
-  return (
-    <div className="admin-screen">
-      <div className="admin-card">
-        <div className="admin-header">
-          <div>
-            <div className="brand">Duty Roster</div>
-            <h1>Administrator / Ward Manager</h1>
-            <p>
-              सर्व तयार केलेले wards येथे manage करा. प्रत्येक ward चा roster वेगळा cloud मध्ये जतन होईल.
-            </p>
-          </div>
-          <button onClick={onLogout} className="logout-btn">
-            <LogOut size={16}/>
-            Logout
-          </button>
-        </div>
-
-        {error && <div className="admin-error">{error}</div>}
-
-        <div className="admin-toolbar">
-          <div>
-            <b>Created Wards</b>
-            <span>{wards.length} ward{wards.length===1?"":"s"}</span>
-          </div>
-          <button className="dark-btn" onClick={openCreate}>
-            <Plus size={16}/>
-            Create New Ward
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="admin-loading">Loading wards...</div>
-        ) : wards.length===0 ? (
-          <div className="admin-empty">
-            <b>No wards created yet.</b>
-            <span>Create your first ward to start using the roster.</span>
-          </div>
-        ) : (
-          <div className="ward-manager-list">
-            {wards.map(ward=>(
-              <div className="ward-manager-row" key={ward.id}>
-                <div className="ward-manager-main">
-                  <b>{ward.ward_name}</b>
-                  <span>
-                    Username: <strong>{ward.username}</strong>
-                    {ward.ward_code ? ` • Code: ${ward.ward_code}` : ""}
-                  </span>
-                </div>
-
-                <div className="ward-manager-actions">
-                  <span className={`ward-active ${ward.active===false?"inactive":""}`}>
-                    {ward.active===false ? "Inactive" : "Active"}
-                  </span>
-                  <button onClick={()=>onOpenWard(ward)}>
-                    <FolderOpen size={15}/>
-                    Open Roster
-                  </button>
-                  <button onClick={()=>openEdit(ward)}>
-                    Edit
-                  </button>
-                  <button className="danger-text" onClick={()=>deleteWard(ward)}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {showForm && (
-        <div className="modal-backdrop">
-          <form className="ward-modal admin-ward-form" onSubmit={submit}>
-            <div className="modal-head">
-              <div>
-                <h2>{editing?"Edit Ward":"Create New Ward"}</h2>
-                <p>
-                  {editing
-                    ? "Ward details आणि password update करा."
-                    : "या ward साठी स्वतंत्र login तयार होईल."}
-                </p>
-              </div>
-              <button type="button" onClick={()=>setShowForm(false)}>
-                <X size={18}/>
-              </button>
-            </div>
-
-            <div className="ward-modal-body">
-              <label>
-                <span>Ward Name</span>
-                <input
-                  value={form.wardName}
-                  onChange={e=>setForm(f=>({...f,wardName:e.target.value}))}
-                  placeholder="कक्ष क्र. २६"
-                  required
-                />
-              </label>
-
-              <label>
-                <span>Ward Code</span>
-                <input
-                  value={form.wardCode}
-                  onChange={e=>setForm(f=>({...f,wardCode:e.target.value}))}
-                  placeholder="26"
-                />
-              </label>
-
-              <label>
-                <span>Username</span>
-                <input
-                  value={form.username}
-                  onChange={e=>setForm(f=>({...f,username:e.target.value}))}
-                  placeholder="ward26"
-                  autoComplete="off"
-                  required
-                />
-              </label>
-
-              <label>
-                <span>{editing ? "New Password (optional)" : "Password"}</span>
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={e=>setForm(f=>({...f,password:e.target.value}))}
-                  placeholder={editing?"Leave blank to keep current password":"Minimum 6 characters"}
-                  autoComplete="new-password"
-                  required={!editing}
-                  minLength={6}
-                />
-              </label>
-
-              {editing && (
-                <label className="admin-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={form.active}
-                    onChange={e=>setForm(f=>({...f,active:e.target.checked}))}
-                  />
-                  <span>Ward is active</span>
-                </label>
-              )}
-            </div>
-
-            <div className="modal-foot">
-              <button type="button" onClick={()=>setShowForm(false)}>
-                Cancel
-              </button>
-              <button type="submit" className="dark-btn">
-                <Save size={15}/>
-                {editing?"Save Changes":"Create Ward"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function AppShell(){
-  const [auth,setAuth]=useState(null);
-  const [checking,setChecking]=useState(true);
-  const [selectedWard,setSelectedWard]=useState(null);
-
+  const [auth,setAuth]=useState(null); const [checking,setChecking]=useState(true);
   useEffect(()=>{
-    fetch("/api/me",{credentials:"include"})
-      .then(r=>r.ok?r.json():null)
-      .then(data=>setAuth(data?.user||null))
-      .catch(()=>setAuth(null))
-      .finally(()=>setChecking(false));
+    fetch("/api/me",{credentials:"include"}).then(r=>r.ok?r.json():null).then(data=>setAuth(data?.user||null)).catch(()=>setAuth(null)).finally(()=>setChecking(false));
   },[]);
-
-  const logout=async()=>{
-    await fetch("/api/logout",{
-      method:"POST",
-      credentials:"include"
-    }).catch(()=>{});
-    setAuth(null);
-    setSelectedWard(null);
-  };
-
-  if(checking) {
-    return <div className="login-loading">Loading Duty Roster...</div>;
-  }
-
-  if(!auth) {
-    return <LoginScreen onLogin={user=>{
-      setAuth(user);
-      setSelectedWard(null);
-    }}/>;
-  }
-
-  const role=String(auth.role||auth.userRole||"ward").toLowerCase();
-  const isAdmin=role==="admin" || role==="administrator";
-
-  if(isAdmin && !selectedWard){
-    return (
-      <AdminPanel
-        user={auth}
-        onLogout={logout}
-        onOpenWard={ward=>setSelectedWard(ward)}
-      />
-    );
-  }
-
-  return (
-    <App
-      user={auth}
-      onLogout={logout}
-      cloudWardId={isAdmin ? selectedWard?.id : null}
-      onBackToAdmin={isAdmin ? ()=>setSelectedWard(null) : null}
-    />
-  );
+  const logout=async()=>{await fetch("/api/logout",{method:"POST",credentials:"include"}).catch(()=>{});setAuth(null);};
+  if(checking) return <div className="login-loading">Loading Duty Roster...</div>;
+  if(!auth) return <LoginScreen onLogin={setAuth}/>;
+  return <App user={auth} onLogout={logout}/>;
 }
 
 function SizeControl({value,onChange,min=7,max=40,small=false}) {
