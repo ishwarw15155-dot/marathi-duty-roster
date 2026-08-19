@@ -75,19 +75,14 @@ function blankRoster() {
       ward:16,
       title:15,
       date:13,
-      headerSr:11,
-      headerRoll:11,
-      headerName:11,
-      headerDay:11,
-      headerExtra:11,
+      headerAll:11,
       group:12,
       rollNumber:10.5,
       staffName:16,
       dutyCode:12,
       extraValue:10.5,
       summaryLabel:10.5,
-      summaryDay:11,
-      summaryCount:11,
+        summaryCount:11,
       summaryAbbr:8
     },
     savedAt:null
@@ -137,7 +132,10 @@ function normalizeRoster(data={}) {
     globalFontSize:Math.max(12,Math.min(24,Number(data.globalFontSize)||base.globalFontSize)),
     fontSizes:{
       ...base.fontSizes,
-      ...(data.fontSizes||{})
+      ...(data.fontSizes||{}),
+      headerAll:Number(data.fontSizes?.headerAll)
+        || Number(data.fontSizes?.headerDay)
+        || base.fontSizes.headerAll
     },
     duties,
     posts,
@@ -782,18 +780,27 @@ function App({user,onLogout}) {
               label="Hospital Name"
               value={roster.hospital}
               onChange={v=>update("hospital",v)}
+              sizeKey="hospital"
+              fontSizes={roster.fontSizes}
+              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
             />
 
             <Field
               label="Department Name"
               value={roster.department}
               onChange={v=>update("department",v)}
+              sizeKey="department"
+              fontSizes={roster.fontSizes}
+              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
             />
 
             <Field
               label="Ward / Room"
               value={roster.ward}
               onChange={v=>update("ward",v)}
+              sizeKey="ward"
+              fontSizes={roster.fontSizes}
+              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
             />
 
             <Field
@@ -801,12 +808,18 @@ function App({user,onLogout}) {
               value={roster.title}
               wide
               onChange={v=>update("title",v)}
+              sizeKey="title"
+              fontSizes={roster.fontSizes}
+              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
             />
 
             <Field
               label="From Date"
               type="date"
               value={roster.from}
+              sizeKey="date"
+              fontSizes={roster.fontSizes}
+              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
               onChange={v=>{
                 if(!v){
                   update("from","");
@@ -825,9 +838,23 @@ function App({user,onLogout}) {
               type="date"
               value={roster.to}
               onChange={v=>update("to",v)}
+              sizeKey="date"
+              fontSizes={roster.fontSizes}
+              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
             />
 
           </div>
+
+          <A4SizeControls
+            fontSizes={roster.fontSizes}
+            onChange={(key,v)=>setRoster(r=>({
+              ...r,
+              fontSizes:{
+                ...r.fontSizes,
+                [key]:Math.max(7,Math.min(40,Number(v)||r.fontSizes?.[key]||12))
+              }
+            }))}
+          />
 
           <div className="date-hint">
             From Date निवडल्यानंतर To Date आपोआप 7 दिवसांच्या roster प्रमाणे भरली जाईल.
@@ -1323,16 +1350,6 @@ function App({user,onLogout}) {
       <FontSettingsModal
         value={roster.fontFamily}
         onChange={v=>update("fontFamily",v)}
-        fontSize={roster.globalFontSize||16}
-        onFontSizeChange={v=>update("globalFontSize",Math.max(12,Math.min(24,v)))}
-        fontSizes={roster.fontSizes}
-        onFontSizeFieldChange={(key,value)=>setRoster(r=>({
-          ...r,
-          fontSizes:{
-            ...r.fontSizes,
-            [key]:Math.max(7,Math.min(40,Number(value)||r.fontSizes?.[key]||12))
-          }
-        }))}
         onClose={()=>setShowFontSettings(false)}
       />
     }
@@ -1353,35 +1370,13 @@ function fontStack(font){
   return '"Mukta","Noto Sans Devanagari","Nirmala UI",sans-serif';
 }
 
-function FontSettingsModal({value,onChange,fontSize,onFontSizeChange,fontSizes,onFontSizeFieldChange,onClose}){
-  const fields=[
-    ["hospital","Hospital Name / रुग्णालयाचे नाव"],
-    ["department","Department Name / विभागाचे नाव"],
-    ["ward","Ward Name / कक्षाचे नाव"],
-    ["title","Roster Title / शीर्षक"],
-    ["date","Date / दिनांक"],
-    ["headerSr","अ क्र"],
-    ["headerRoll","रोल नं"],
-    ["headerName","नावे"],
-    ["headerDay","सोम–रवि + दिनांक"],
-    ["headerExtra","नैर / जमा / रुजू"],
-    ["group","Post / Group Name"],
-    ["rollNumber","Staff Roll Number / क्रमांक"],
-    ["staffName","Staff Name / कर्मचारी नाव"],
-    ["dutyCode","Duty Code / M E N NO L"],
-    ["extraValue","नैर / जमा / रुजू Value"],
-    ["summaryLabel","Summary Duty Label"],
-    ["summaryDay","Summary सोम–रवि + दिनांक"],
-    ["summaryCount","Summary Numbers"],
-    ["summaryAbbr","Summary Abbreviation"]
-  ];
-
+function FontSettingsModal({value,onChange,onClose}){
   return <div className="modal-backdrop">
-    <div className="font-modal element-font-modal">
+    <div className="font-modal">
       <div className="modal-head">
         <div>
-          <h2>Font & Size Settings / फॉन्ट व आकार</h2>
-          <p>प्रत्येक A4 element चा आकार स्वतंत्रपणे बदला.</p>
+          <h2>Marathi Font / मराठी फॉन्ट</h2>
+          <p>Duty List आणि A4 Print/PDF साठी फॉन्ट निवडा.</p>
         </div>
         <button onClick={onClose}><X size={18}/></button>
       </div>
@@ -1389,52 +1384,16 @@ function FontSettingsModal({value,onChange,fontSize,onFontSizeChange,fontSizes,o
       <div className="font-options">
         {FONT_OPTIONS.map(font=><button key={font.value}
           className={`font-option ${value===font.value?"selected":""}`}
-          onClick={()=>onChange(font.value)} style={{fontFamily:fontStack(font.value)}}>
+          onClick={()=>onChange(font.value)}
+          style={{fontFamily:fontStack(font.value)}}>
           <span className="font-option-name">{font.label}</span>
           <span className="font-option-sample">{font.sample}</span>
         </button>)}
       </div>
 
-      <div className="global-size-control">
-        <div className="global-size-head">
-          <b>Overall Screen Size / संपूर्ण स्क्रीन आकार</b>
-          <span>{fontSize}px</span>
-        </div>
-        <div className="global-size-row">
-          <button type="button" onClick={()=>onFontSizeChange(fontSize-1)}>−</button>
-          <input type="range" min="12" max="24" step="1" value={fontSize}
-            onChange={e=>onFontSizeChange(Number(e.target.value))}/>
-          <button type="button" onClick={()=>onFontSizeChange(fontSize+1)}>+</button>
-        </div>
-      </div>
-
-      <div className="element-size-grid">
-        {fields.map(([key,label])=>{
-          const v=Number(fontSizes?.[key]||12);
-          return <label className="element-size-item" key={key}>
-            <span>{label}</span>
-            <div>
-              <input
-                type="number"
-                min="7"
-                max="40"
-                step="0.5"
-                value={v}
-                onChange={e=>onFontSizeFieldChange(key,e.target.value)}
-              />
-              <span className="px-label">px</span>
-            </div>
-          </label>;
-        })}
-      </div>
-
-      <div className="font-preview" style={{fontFamily:fontStack(value),fontSize:`${fontSizes?.staffName||16}px`}}>
+      <div className="font-preview" style={{fontFamily:fontStack(value)}}>
         <b>Preview / नमुना</b>
-        <div>ससून सर्वोपचार रुग्णालय, पुणे</div>
-        <div>मनोरुग्णशास्त्र विभाग</div>
-        <div>कक्ष क्र. २६</div>
-        <div>अ क्र &nbsp; रोल नं &nbsp; नावे &nbsp; सोम 17/08 &nbsp; मंगळ 18/08 &nbsp; नैर &nbsp; जमा &nbsp; रुजू</div>
-        <div>श्री सागर वाल्हेकर — सकाळ (M) — 123</div>
+        <div>श्री सागर वाल्हेकर — सकाळ (M) — सोम</div>
       </div>
 
       <div className="modal-foot">
@@ -1484,10 +1443,30 @@ function AppShell(){
   return <App user={auth} onLogout={logout}/>;
 }
 
-function Field({label,value,onChange,type="text",wide=false}) {
+function SizeControl({value,onChange,min=7,max=40,small=false}) {
+  const n=Number(value)||12;
+  return (
+    <div className={`inline-size-control ${small?"small":""}`}>
+      <button type="button" title="Decrease size" onClick={()=>onChange(Math.max(min,n-1))}>−</button>
+      <span>{n}px</span>
+      <button type="button" title="Increase size" onClick={()=>onChange(Math.min(max,n+1))}>+</button>
+    </div>
+  );
+}
+
+function Field({label,value,onChange,type="text",wide=false,sizeKey,fontSizes,onSizeChange}) {
   return (
     <label className={wide?"wide-field":""}>
-      <span>{label}</span>
+      <div className="field-label-row">
+        <span>{label}</span>
+        {sizeKey && fontSizes && onSizeChange &&
+          <SizeControl
+            value={fontSizes[sizeKey]}
+            onChange={v=>onSizeChange(sizeKey,v)}
+            small
+          />
+        }
+      </div>
 
       <div className="input-wrap">
         {type==="date"&&<CalendarDays size={15}/>}
@@ -1499,6 +1478,75 @@ function Field({label,value,onChange,type="text",wide=false}) {
         />
       </div>
     </label>
+  );
+}
+
+function A4SizeControls({fontSizes,onChange}) {
+  const groups=[
+    {
+      title:"A4 Header / शीर्षक",
+      items:[
+        ["hospital","Hospital Name"],
+        ["department","Department"],
+        ["ward","Ward"],
+        ["title","Roster Title"],
+        ["date","Date"]
+      ]
+    },
+    {
+      title:"Main Table / मुख्य टेबल",
+      items:[
+        ["headerAll","अ क्र / रोल नं / नावे / सोम–रवि + दिनांक / नैर / जमा / रुजू"],
+        ["group","Post / Group"],
+        ["rollNumber","Roll No."],
+        ["dutyCode","Duty Code"],
+        ["extraValue","नैर / जमा / रुजू values"]
+      ]
+    },
+    {
+      title:"Duty Summary / ड्युटी सारांश",
+      items:[
+        ["summaryLabel","सकाळ / दुपार / रापा / रासू / रजा / एकूण"],
+        ["summaryCount","Summary Numbers"],
+        ["summaryAbbr","M / E / N / NO / L"]
+      ]
+    }
+  ];
+
+  return (
+    <div className="a4-size-panel">
+      <div className="a4-size-panel-head">
+        <div>
+          <b>A4 Element Size / A4 प्रत्येक घटकाचा आकार</b>
+          <span>प्रत्येक घटकाचा आकार येथेच बदलता येईल.</span>
+        </div>
+      </div>
+
+      <div className="a4-size-groups">
+        {groups.map(group=>
+          <div className="a4-size-group" key={group.title}>
+            <div className="a4-size-group-title">{group.title}</div>
+            <div className="a4-size-items">
+              {group.items.map(([key,label])=>
+                <div className="a4-size-item" key={key}>
+                  <span>{label}</span>
+                  <SizeControl
+                    value={fontSizes?.[key]||12}
+                    onChange={v=>onChange(key,v)}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="a4-size-linked-note">
+        <b>सोम–रवि + दिनांक:</b> Main Table Header ची एकच size setting
+        वापरली जाईल. त्यामुळे Main Table मधील <b>अ क्र, रोल नं, नावे,
+        सोम–रवि + दिनांक, नैर, जमा, रुजू</b> आणि Summary मधील
+        <b>सोम–रवि + दिनांक</b> यांचा font size आपोआप समान राहील.
+      </div>
+    </div>
   );
 }
 
@@ -1994,18 +2042,13 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
     ward:16,
     title:15,
     date:13,
-    headerSr:11,
-    headerRoll:11,
-    headerName:11,
-    headerDay:11,
-    headerExtra:11,
+    headerAll:11,
     group:12,
     rollNumber:10.5,
     staffName:16,
     dutyCode:12,
     extraValue:10.5,
     summaryLabel:10.5,
-    summaryDay:11,
     summaryCount:11,
     summaryAbbr:8,
     ...(roster.fontSizes||{})
@@ -2017,18 +2060,14 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
     "--fs-ward":`${fs.ward}px`,
     "--fs-title":`${fs.title}px`,
     "--fs-date":`${fs.date}px`,
-    "--fs-header-sr":`${fs.headerSr}px`,
-    "--fs-header-roll":`${fs.headerRoll}px`,
-    "--fs-header-name":`${fs.headerName}px`,
-    "--fs-header-day":`${fs.headerDay}px`,
-    "--fs-header-extra":`${fs.headerExtra}px`,
+    "--fs-header-all":`${fs.headerAll}px`,
     "--fs-group":`${fs.group}px`,
     "--fs-roll":`${fs.rollNumber}px`,
     "--fs-name":`${fs.staffName}px`,
     "--fs-duty":`${fs.dutyCode}px`,
     "--fs-extra":`${fs.extraValue}px`,
     "--fs-summary-label":`${fs.summaryLabel}px`,
-    "--fs-summary-day":`${fs.summaryDay}px`,
+    "--fs-summary-day":`${fs.headerAll}px`,
     "--fs-summary-count":`${fs.summaryCount}px`,
     "--fs-summary-abbr":`${fs.summaryAbbr}px`
   };
