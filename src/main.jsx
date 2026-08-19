@@ -14,11 +14,11 @@ const DAYS = ["सोम","मंगळ","बुध","गुरु","शुक�
 const DAY_NAMES = ["रवि","सोम","मंगळ","बुध","गुरु","शुक्र","शनि"];
 
 const DEFAULT_DUTIES = [
-  { key:"morning", label:"सकाळ", abbr:"M", description:"Morning", login:"", logout:"" },
-  { key:"evening", label:"दुपार", abbr:"E", description:"Evening", login:"", logout:"" },
-  { key:"night", label:"रापा", abbr:"N", description:"Night", login:"", logout:"" },
-  { key:"nightoff", label:"रासू", abbr:"NO", description:"Night Off", login:"", logout:"" },
-  { key:"leave", label:"रजा", abbr:"L", description:"Leave", login:"", logout:"" }
+  { key:"morning", label:"सकाळ", abbr:"M", description:"Morning", login:"", logout:"", includeInSummary:true },
+  { key:"evening", label:"दुपार", abbr:"E", description:"Evening", login:"", logout:"", includeInSummary:true },
+  { key:"night", label:"रापा", abbr:"N", description:"Night", login:"", logout:"", includeInSummary:true },
+  { key:"nightoff", label:"रासू", abbr:"NO", description:"Night Off", login:"", logout:"", includeInSummary:true },
+  { key:"leave", label:"रजा", abbr:"L", description:"Leave", login:"", logout:"", includeInSummary:true }
 ];
 
 const DEFAULT_POSTS = ["परिसेवक","अधिपरिचारिका","कक्षसेवक","सफाईगार"];
@@ -44,6 +44,9 @@ function newEmployee(group="अधिपरिचारिका") {
     nair:"",
     jama:"",
     ruju:"",
+    leaveType:"",
+    leaveFrom:"",
+    leaveTo:"",
     marathiFontSize:16,
     marathiBold:false,
     duties:Array(7).fill(""),
@@ -98,7 +101,8 @@ function normalizeRoster(data={}) {
         abbr:d.abbr||"D",
         description:d.description||"",
         login:d.login||"",
-        logout:d.logout||""
+        logout:d.logout||"",
+        includeInSummary: typeof d.includeInSummary === "boolean" ? d.includeInSummary : ["morning","evening","night","nightoff","leave"].includes(d.key)
       }))
     : base.duties;
 
@@ -121,7 +125,10 @@ function normalizeRoster(data={}) {
         gender:e.gender||"male",
         nair:e.nair||"",
         jama:e.jama||"",
-        ruju:e.ruju||""
+        ruju:e.ruju||"",
+        leaveType:e.leaveType||"",
+        leaveFrom:e.leaveFrom||"",
+        leaveTo:e.leaveTo||""
       }))
     : base.employees;
 
@@ -142,6 +149,44 @@ function normalizeRoster(data={}) {
     employees,
     savedAt:data.savedAt||null
   };
+}
+
+const SUMMARY_DEFAULT_KEYS = new Set(["morning","evening","night","nightoff","leave"]);
+const HOLIDAY_CODES = new Set(["PH","SS","FS","CL"]);
+const LEAVE_CODES = new Set(["L","EL","ML"]);
+
+function isoDateForDay(from, dayIndex){
+  if(!from || dayIndex<0) return "";
+  const d=new Date(`${from}T00:00:00`);
+  d.setDate(d.getDate()+dayIndex);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function getLeaveCodeForDay(employee, from, dayIndex){
+  if(!employee?.leaveType || !employee?.leaveFrom || !employee?.leaveTo) return "";
+  const date=isoDateForDay(from,dayIndex);
+  if(!date) return "";
+  if(date>=employee.leaveFrom && date<=employee.leaveTo){
+    return employee.leaveType==="ML" ? "ML" : "EL";
+  }
+  return "";
+}
+
+function formatDateRange(from,to){
+  if(!from || !to) return "";
+  return `${formatDate(from)} ते ${formatDate(to)}`;
+}
+
+function dutyCode(duty){
+  return String(duty?.abbr||"").trim().toUpperCase();
+}
+
+function isHolidayDuty(duty){
+  return HOLIDAY_CODES.has(dutyCode(duty));
+}
+
+function isLeaveDuty(duty){
+  return LEAVE_CODES.has(dutyCode(duty));
 }
 
 function formatDate(value) {
@@ -384,7 +429,8 @@ function App({user,onLogout}) {
         abbr:"D",
         description:"",
         login:"",
-        logout:""
+        logout:"",
+        includeInSummary:false
       }
     ]
   }));
@@ -1062,6 +1108,36 @@ function App({user,onLogout}) {
                         </button>
 
                       </div>
+
+                      <div className="leave-inline-controls">
+                        <select
+                          value={e.leaveType||""}
+                          onChange={x=>editEmployee(e.id,"leaveType",x.target.value)}
+                          title="EL / ML leave range"
+                        >
+                          <option value="">Leave: None</option>
+                          <option value="EL">EL — Earn Leave</option>
+                          <option value="ML">ML — Medical Leave</option>
+                        </select>
+                        <input
+                          type="date"
+                          value={e.leaveFrom||""}
+                          onChange={x=>editEmployee(e.id,"leaveFrom",x.target.value)}
+                          title="Leave From"
+                        />
+                        <span>to</span>
+                        <input
+                          type="date"
+                          value={e.leaveTo||""}
+                          onChange={x=>editEmployee(e.id,"leaveTo",x.target.value)}
+                          title="Leave To"
+                        />
+                      </div>
+                      {e.leaveType && e.leaveFrom && e.leaveTo &&
+                        <div className="leave-range-preview">
+                          {e.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} {formatDateRange(e.leaveFrom,e.leaveTo)}
+                        </div>
+                      }
                     </div>
 
                   </td>
@@ -1130,7 +1206,7 @@ function App({user,onLogout}) {
             <div>
               <h2>Duty Assignment / ड्युटी</h2>
               <p>
-                M = सकाळ, E = दुपार, N = रापा, NO = रासू, L = रजा.
+                M = सकाळ, E = दुपार, N = रापा, NO = रासू, L = रजा. EL/ML leave range दिल्यास त्या तारखांना duty cell आपोआप EL/ML दाखवेल.
               </p>
             </div>
 
@@ -1169,32 +1245,37 @@ function App({user,onLogout}) {
                     {displayStaffName(e)}
                   </td>
 
-                  {e.duties.map((v,i)=><td key={i}>
-
-                    <select
-                      value={v}
-                      onChange={x=>editDuty(e.id,i,x.target.value)}
-                    >
-                      <option value="">—</option>
-
-                      {roster.duties.map(d=>
-                        <option value={d.key} key={d.key}>
-                          {d.abbr} — {d.label}
-                        </option>
-                      )}
-
-                    </select>
-
-                    {v &&
-                      <input
-                        className="day-note"
-                        placeholder="note"
-                        value={e.customNotes[i]||""}
-                        onChange={x=>editNote(e.id,i,x.target.value)}
-                      />
-                    }
-
-                  </td>)}
+                  {e.duties.map((v,i)=>{
+                    const forcedLeave=getLeaveCodeForDay(e,roster.from,i);
+                    return <td key={i}>
+                      {forcedLeave ?
+                        <div className="leave-day-mark">
+                          <b>{forcedLeave}</b>
+                          <small>{e.leaveType==="ML"?"Medical":"Earn"} Leave</small>
+                        </div>
+                      : <>
+                        <select
+                          value={v}
+                          onChange={x=>editDuty(e.id,i,x.target.value)}
+                        >
+                          <option value="">—</option>
+                          {roster.duties.map(d=>
+                            <option value={d.key} key={d.key}>
+                              {d.abbr} — {d.label}
+                            </option>
+                          )}
+                        </select>
+                        {v &&
+                          <input
+                            className="day-note"
+                            placeholder="note"
+                            value={e.customNotes[i]||""}
+                            onChange={x=>editNote(e.id,i,x.target.value)}
+                          />
+                        }
+                      </>}
+                    </td>;
+                  })}
 
                 </tr>)}
 
@@ -1561,7 +1642,7 @@ function DutyManager({roster,onClose,onAdd,onUpdate,onDelete}) {
           <div>
             <h2>Manage Duties</h2>
             <p>
-              Duty name, abbreviation आणि optional Login / Logout time.
+              Duty name, abbreviation, Login / Logout आणि Summary मध्ये दाखवायचे आहे का ते निवडा.
             </p>
           </div>
 
@@ -1579,6 +1660,7 @@ function DutyManager({roster,onClose,onAdd,onUpdate,onDelete}) {
             <span>Description</span>
             <span>Login</span>
             <span>Logout</span>
+            <span>Summary</span>
             <span></span>
           </div>
 
@@ -1620,6 +1702,15 @@ function DutyManager({roster,onClose,onAdd,onUpdate,onDelete}) {
                   onChange={e=>onUpdate(d.key,"logout",e.target.value)}
                 />
               </div>
+
+              <label className="summary-check">
+                <input
+                  type="checkbox"
+                  checked={!!d.includeInSummary}
+                  onChange={e=>onUpdate(d.key,"includeInSummary",e.target.checked)}
+                />
+                <span>Include</span>
+              </label>
 
               <button
                 className="delete-btn"
@@ -2023,18 +2114,29 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
 
   const dailyDutyCounts=Array.from(
     {length:7},
-    ()=>Object.fromEntries(
-      roster.duties.map(d=>[d.key,0])
-    )
+    ()=>Object.fromEntries(roster.duties.map(d=>[d.key,0]))
   );
+  const dailyHolidayCounts=Array(7).fill(0);
+  const dailyLeaveCounts=Array(7).fill(0);
 
   roster.employees.forEach(e=>{
     e.duties.forEach((key,dayIndex)=>{
+      const forcedLeave=getLeaveCodeForDay(e,roster.from,dayIndex);
+      if(forcedLeave){
+        dailyLeaveCounts[dayIndex]++;
+        return;
+      }
       if(key && dailyDutyCounts[dayIndex]?.[key]!==undefined){
         dailyDutyCounts[dayIndex][key]++;
+        const duty=roster.duties.find(d=>d.key===key);
+        if(isLeaveDuty(duty)) dailyLeaveCounts[dayIndex]++;
+        if(isHolidayDuty(duty)) dailyHolidayCounts[dayIndex]++;
       }
     });
   });
+
+  const summaryDuties=DEFAULT_DUTIES;
+  const customSummaryDuties=roster.duties.filter(d=>!SUMMARY_DEFAULT_KEYS.has(d.key) && d.includeInSummary);
 
   const fs = {
     hospital:18,
@@ -2150,6 +2252,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                   employee={e}
                   index={i}
                   duties={roster.duties}
+                  from={roster.from}
                 />
               )}
 
@@ -2196,25 +2299,45 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
 
         <tbody>
 
-          {roster.duties.map(duty=>
+          {summaryDuties.map(duty=>
             <tr key={duty.key}>
-
               <th className="summary-duty summary-label" colSpan={3}>
                 {duty.label}
-                <span className="summary-abbr">
-                  ({duty.abbr})
-                </span>
+                <span className="summary-abbr">({duty.abbr})</span>
               </th>
-
               {labels.map((_,dayIndex)=>
                 <td key={dayIndex} className="summary-count">
-                  {dailyDutyCounts[dayIndex][duty.key]||""}
+                  {SUMMARY_DEFAULT_KEYS.has(duty.key) && duty.key==="leave"
+                    ? (dailyLeaveCounts[dayIndex]||"")
+                    : (dailyDutyCounts[dayIndex][duty.key]||"")}
                 </td>
               )}
               <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
               <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
               <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+            </tr>
+          )}
 
+          <tr>
+            <th className="summary-duty summary-label" colSpan={3}>
+              सुट्टया
+            </th>
+            {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyHolidayCounts[dayIndex]||""}</td>)}
+            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+          </tr>
+
+          {customSummaryDuties.map(duty=>
+            <tr key={`custom-summary-${duty.key}`}>
+              <th className="summary-duty summary-label" colSpan={3}>
+                {duty.label}
+                <span className="summary-abbr">({duty.abbr})</span>
+              </th>
+              {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyDutyCounts[dayIndex][duty.key]||""}</td>)}
+              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
             </tr>
           )}
 
@@ -2225,9 +2348,10 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
 
             {labels.map((_,dayIndex)=>
               <td key={dayIndex} className="summary-count">
-                {Object.values(
-                  dailyDutyCounts[dayIndex]
-                ).reduce((a,b)=>a+b,0)||""}
+                {roster.employees.reduce((total,e)=>{
+                  const forced=getLeaveCodeForDay(e,roster.from,dayIndex);
+                  return total + (forced || e.duties[dayIndex] ? 1 : 0);
+                },0)||""}
               </td>
             )}
             <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
@@ -2243,7 +2367,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
   );
 });
 
-function PrintableRow({employee,index,duties}) {
+function PrintableRow({employee,index,duties,from}) {
   return (
     <tr>
 
@@ -2258,20 +2382,22 @@ function PrintableRow({employee,index,duties}) {
           fontWeight:employee.marathiBold?700:400
         }}
       >
-        {displayStaffName(employee)}
+        <div>{displayStaffName(employee)}</div>
+        {employee.leaveType && employee.leaveFrom && employee.leaveTo &&
+          <small className="leave-range-print">
+            {employee.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} FROM {formatDate(employee.leaveFrom)} TO {formatDate(employee.leaveTo)}
+          </small>
+        }
       </td>
 
       {employee.duties.map((key,i)=>{
+        const forcedLeave=getLeaveCodeForDay(employee,from,i);
         const duty=duties.find(d=>d.key===key);
-
         return (
-          <td key={i} className="print-duty-code">
-            {duty?.abbr||""}
-
-            {employee.customNotes[i]?
-              <small>{employee.customNotes[i]}</small>
-              :null
-            }
+          <td key={i} className={`print-duty-code ${forcedLeave?"forced-leave-cell":""}`}>
+            {forcedLeave || duty?.abbr || ""}
+            {forcedLeave ? <small>{forcedLeave==="ML"?"Medical Leave":"Earn Leave"}</small> : null}
+            {!forcedLeave && employee.customNotes[i] ? <small>{employee.customNotes[i]}</small> : null}
           </td>
         );
       })}
