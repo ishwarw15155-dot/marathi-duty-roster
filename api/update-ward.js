@@ -1,33 +1,39 @@
 import { supabaseAdmin } from "./_supabaseAdmin.js";
+import { getSecret } from "./_auth.js";
 
-function getToken(req) {
+function getSession(req) {
   const cookie = req.headers.cookie || "";
   const match = cookie.match(/(?:^|;\s*)duty_auth=([^;]+)/);
 
-  return match ? decodeURIComponent(match[1]) : null;
-}
+  if (!match) return null;
 
-async function getCurrentUser(req) {
-  const token = getToken(req);
+  try {
+    const token = decodeURIComponent(match[1]);
 
-  if (!token) return null;
+    const session = JSON.parse(
+      Buffer.from(token, "base64url").toString("utf8")
+    );
 
-  const {
-    data: { user },
-    error,
-  } = await supabaseAdmin.auth.getUser(token);
+    if (!session || !session.username || !session.role) {
+      return null;
+    }
 
-  if (error || !user) return null;
+    if (session.secret !== getSecret()) {
+      return null;
+    }
 
-  return user;
+    return session;
+  } catch {
+    return null;
+  }
 }
 
 async function requireAdmin(req) {
-  const user = await getCurrentUser(req);
+  const session = getSession(req);
 
-  if (!user) {
+  if (!session) {
     return {
-      user: null,
+      session: null,
       error: {
         status: 401,
         message: "Not authenticated",
@@ -35,16 +41,9 @@ async function requireAdmin(req) {
     };
   }
 
-  const { data: profile, error } =
-    await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("user_id", user.id)
-      .single();
-
-  if (error || profile?.role !== "admin") {
+  if (session.role !== "admin") {
     return {
-      user: null,
+      session: null,
       error: {
         status: 403,
         message: "Administrator access required",
@@ -53,7 +52,7 @@ async function requireAdmin(req) {
   }
 
   return {
-    user,
+    session,
     error: null,
   };
 }
@@ -134,20 +133,22 @@ export default async function handler(req, res) {
       }
     }
 
-    const { data: updatedWard, error: updateError } =
-      await supabaseAdmin
-        .from("wards")
-        .update({
-          ward_name: newWardName,
-          ward_code: newWardCode,
-          username: newUsername,
-          ...(typeof active === "boolean"
-            ? { active }
-            : {}),
-        })
-        .eq("id", wardId)
-        .select()
-        .single();
+    const {
+      data: updatedWard,
+      error: updateError,
+    } = await supabaseAdmin
+      .from("wards")
+      .update({
+        ward_name: newWardName,
+        ward_code: newWardCode,
+        username: newUsername,
+        ...(typeof active === "boolean"
+          ? { active }
+          : {}),
+      })
+      .eq("id", wardId)
+      .select()
+      .single();
 
     if (updateError) {
       return res.status(400).json({
@@ -228,7 +229,7 @@ export default async function handler(req, res) {
       ward: updatedWard,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Update ward error:", error);
 
     return res.status(500).json({
       error: "Server error while updating ward",
