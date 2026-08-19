@@ -634,15 +634,24 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
 .print-title{font-size:var(--fs-title)!important;}
 .print-date{font-size:var(--fs-date)!important;}
 
-.paper-roster thead .p-sr{font-size:var(--fs-header-sr)!important;}
-.paper-roster thead .p-roll{font-size:var(--fs-header-roll)!important;}
-.paper-roster thead .p-name{font-size:var(--fs-header-name)!important;}
-.paper-roster thead .p-day{font-size:var(--fs-header-day)!important;}
-.paper-roster thead .p-extra{font-size:var(--fs-header-extra)!important;}
+.paper-roster thead .p-sr,
+.paper-roster thead .p-roll,
+.paper-roster thead .p-name,
+.paper-roster thead .p-day,
+.paper-roster thead .p-extra{
+  font-size:var(--fs-header-all)!important;
+}
 
+/* Weekday AND date are intentionally the same size. */
 .paper-roster thead th small,
 .paper-summary thead th small{
-  font-size:calc(var(--fs-header-day) * .72)!important;
+  font-size:var(--fs-header-all)!important;
+  line-height:1!important;
+}
+
+.paper-summary thead .summary-day,
+.paper-summary thead .summary-extra{
+  font-size:var(--fs-header-all)!important;
 }
 
 .paper-roster tbody .group-row td{font-size:var(--fs-group)!important;}
@@ -711,4 +720,140 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
   .room-box{font-size:var(--fs-ward)!important;}
   .print-title{font-size:var(--fs-title)!important;}
   .print-date{font-size:var(--fs-date)!important;}
+}
+
+
+/* v13.4 - inline A4 element size controls, placed near the relevant fields/table */
+.field-label-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.inline-size-control{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  white-space:nowrap;
+  margin-left:5px;
+}
+.inline-size-control button{
+  width:22px;
+  height:21px;
+  padding:0;
+  border:1px solid #cdd4dc;
+  border-radius:4px;
+  background:#fff;
+  color:#39434d;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  font-size:13px;
+  line-height:1;
+}
+.inline-size-control button:hover{
+  background:#f1f4f7;
+}
+.inline-size-control span{
+  min-width:36px;
+  text-align:center;
+  font-size:9px;
+  color:#65717d;
+  font-weight:600;
+}
+.inline-size-control.small{
+  transform:scale(.9);
+  transform-origin:right center;
+}
+
+.a4-size-panel{
+  margin:0 20px 14px;
+  border:1px solid #dce2e8;
+  border-radius:8px;
+  background:#fafbfc;
+  overflow:hidden;
+}
+.a4-size-panel-head{
+  padding:9px 12px;
+  border-bottom:1px solid #e1e6eb;
+  background:#f4f6f8;
+}
+.a4-size-panel-head div{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.a4-size-panel-head b{
+  font-size:12px;
+  color:#35404b;
+}
+.a4-size-panel-head span{
+  font-size:10px;
+  color:#77828d;
+}
+.a4-size-groups{
+  display:grid;
+  grid-template-columns:1.15fr 1.5fr 1.2fr;
+  gap:0;
+}
+.a4-size-group{
+  padding:9px 10px;
+  border-right:1px solid #e1e6eb;
+}
+.a4-size-group:last-child{
+  border-right:0;
+}
+.a4-size-group-title{
+  font-size:10px;
+  font-weight:700;
+  color:#52606d;
+  margin-bottom:6px;
+}
+.a4-size-items{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.a4-size-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  min-height:25px;
+}
+.a4-size-item > span{
+  font-size:9px;
+  color:#5d6873;
+  line-height:1.2;
+}
+.a4-size-item .inline-size-control{
+  flex-shrink:0;
+}
+@media (max-width:1000px){
+  .a4-size-groups{
+    grid-template-columns:1fr;
+  }
+  .a4-size-group{
+    border-right:0;
+    border-bottom:1px solid #e1e6eb;
+  }
+  .a4-size-group:last-child{
+    border-bottom:0;
+  }
+}
+
+/* v13.5: one shared size for the complete table header and summary weekday/date */
+.a4-size-linked-note{
+  margin:0 16px 14px;
+  padding:9px 11px;
+  border:1px solid #d7dee5;
+  border-radius:8px;
+  background:#f7fafc;
+  color:#4a5560;
+  font-size:12px;
+  line-height:1.45;
 }
