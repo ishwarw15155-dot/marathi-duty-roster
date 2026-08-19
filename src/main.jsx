@@ -1325,7 +1325,7 @@ function LoginScreen({onLogin}){
       <label><span>Password</span><input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" required/></label>
       {error&&<div className="login-error">{error}</div>}
       <button className="dark-btn login-btn" disabled={busy}><LogIn size={16}/>{busy?"Logging in...":"Login"}</button>
-      <small className="login-note">Up to 5 users can be configured securely in Vercel Environment Variables.</small>
+      <small className="login-note">Authorized user login</small>
     </form>
   </div>;
 }
