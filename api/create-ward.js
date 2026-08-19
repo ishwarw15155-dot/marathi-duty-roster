@@ -1,28 +1,53 @@
 import { supabaseAdmin } from "./_supabaseAdmin.js";
 
-function getToken(req) {
+function getAccessToken(req) {
   const cookie = req.headers.cookie || "";
-  const match = cookie.match(/(?:^|;\s*)duty_auth=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
+
+  const match = cookie.match(
+    /(?:^|;\s*)sb_access_token=([^;]+)/
+  );
+
+  return match
+    ? decodeURIComponent(match[1])
+    : null;
 }
 
 async function getCurrentUser(req) {
-  const token = getToken(req);
+  const accessToken = getAccessToken(req);
 
-  if (!token) {
+  if (!accessToken) {
     return null;
   }
 
   const {
     data: { user },
     error,
-  } = await supabaseAdmin.auth.getUser(token);
+  } = await supabaseAdmin.auth.getUser(
+    accessToken
+  );
 
   if (error || !user) {
     return null;
   }
 
   return user;
+}
+
+async function isAdmin(userId) {
+  const {
+    data: profile,
+    error,
+  } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("user_id", userId)
+    .single();
+
+  return (
+    !error &&
+    profile &&
+    profile.role === "admin"
+  );
 }
 
 export default async function handler(req, res) {
@@ -41,19 +66,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check that the logged-in user is an administrator.
-    const { data: profile, error: profileError } =
-      await supabaseAdmin
-        .from("profiles")
-        .select("role")
-        .eq("user_id", user.id)
-        .single();
+    const admin = await isAdmin(user.id);
 
-    if (
-      profileError ||
-      !profile ||
-      profile.role !== "admin"
-    ) {
+    if (!admin) {
       return res.status(403).json({
         error: "Administrator access required",
       });
@@ -66,11 +81,7 @@ export default async function handler(req, res) {
       password,
     } = req.body || {};
 
-    if (
-      !wardName ||
-      !username ||
-      !password
-    ) {
+    if (!wardName || !username || !password) {
       return res.status(400).json({
         error:
           "Ward name, username and password are required",
@@ -84,54 +95,71 @@ export default async function handler(req, res) {
       });
     }
 
-    // Prevent duplicate ward usernames.
-    const { data: existingWard } =
-      await supabaseAdmin
-        .from("wards")
-        .select("id")
-        .eq("username", username)
-        .maybeSingle();
+    const cleanWardName = wardName.trim();
+    const cleanWardCode =
+      wardCode?.trim() || null;
+    const cleanUsername = username.trim();
 
-    if (existingWard) {
-      return res.status(409).json({
-        error: "This username is already assigned to a ward",
+    // Check duplicate username.
+    const {
+      data: existingWard,
+      error: existingError,
+    } = await supabaseAdmin
+      .from("wards")
+      .select("id")
+      .eq("username", cleanUsername)
+      .maybeSingle();
+
+    if (existingError) {
+      return res.status(500).json({
+        error: existingError.message,
       });
     }
 
-    // Create the Supabase Auth account.
+    if (existingWard) {
+      return res.status(409).json({
+        error:
+          "This username is already assigned to a ward",
+      });
+    }
+
+    // Create Supabase Auth user.
     const {
       data: authData,
       error: authError,
-    } = await supabaseAdmin.auth.admin.createUser({
-      email: `${username}@ward.local`,
-      password,
-      email_confirm: true,
-    });
+    } =
+      await supabaseAdmin.auth.admin.createUser({
+        email: `${cleanUsername}@ward.local`,
+        password,
+        email_confirm: true,
+      });
 
-    if (authError) {
+    if (authError || !authData?.user) {
       return res.status(400).json({
-        error: authError.message,
+        error:
+          authError?.message ||
+          "Could not create ward login",
       });
     }
 
     const wardUser = authData.user;
 
-    // Create the ward.
+    // Create ward.
     const {
       data: ward,
       error: wardError,
     } = await supabaseAdmin
       .from("wards")
       .insert({
-        ward_name: wardName,
-        ward_code: wardCode || null,
-        username,
+        ward_name: cleanWardName,
+        ward_code: cleanWardCode,
+        username: cleanUsername,
+        active: true,
       })
       .select()
       .single();
 
     if (wardError) {
-      // Roll back the Auth user if ward creation failed.
       await supabaseAdmin.auth.admin.deleteUser(
         wardUser.id
       );
@@ -141,19 +169,19 @@ export default async function handler(req, res) {
       });
     }
 
-    // Create the ward profile.
+    // Create profile.
     const {
-      error: newProfileError,
+      error: profileError,
     } = await supabaseAdmin
       .from("profiles")
       .insert({
         user_id: wardUser.id,
-        username,
-        display_name: wardName,
+        username: cleanUsername,
+        display_name: cleanWardName,
         role: "ward",
       });
 
-    if (newProfileError) {
+    if (profileError) {
       await supabaseAdmin
         .from("wards")
         .delete()
@@ -164,11 +192,11 @@ export default async function handler(req, res) {
       );
 
       return res.status(400).json({
-        error: newProfileError.message,
+        error: profileError.message,
       });
     }
 
-    // Connect the user to exactly one ward.
+    // Connect user to exactly one ward.
     const {
       error: memberError,
     } = await supabaseAdmin
@@ -198,7 +226,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Create an empty roster for the new ward.
+    // Create an empty roster.
     const {
       error: rosterError,
     } = await supabaseAdmin
@@ -210,9 +238,10 @@ export default async function handler(req, res) {
       });
 
     if (rosterError) {
-      // The ward/user can still exist if only the
-      // initial empty roster creation failed.
-      console.error(rosterError);
+      console.error(
+        "Initial roster creation failed:",
+        rosterError
+      );
     }
 
     return res.status(201).json({
@@ -222,13 +251,19 @@ export default async function handler(req, res) {
         ward_name: ward.ward_name,
         ward_code: ward.ward_code,
         username: ward.username,
+        active: ward.active,
       },
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Create ward error:",
+      error
+    );
 
     return res.status(500).json({
-      error: "Server error while creating ward",
+      error:
+        error.message ||
+        "Server error while creating ward",
     });
   }
 }
