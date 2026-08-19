@@ -562,3 +562,66 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
     vertical-align:middle !important;
   }
 }
+
+
+/* v13.2 - additional post-duty columns */
+.paper-roster .col-extra{width:40px;}
+.paper-roster .p-extra{width:40px;font-weight:700;}
+.paper-roster .print-extra{font-weight:600;text-align:center;}
+
+/* v13.2 - staff editor columns */
+.employee-table{min-width:1280px;}
+.employee-table th,.employee-table td{vertical-align:middle;}
+.employee-table td:nth-child(4){width:105px;}
+.employee-table td:nth-child(5){min-width:310px;}
+.employee-table td:nth-child(6),
+.employee-table td:nth-child(7),
+.employee-table td:nth-child(8){width:70px;}
+
+/* v13.2 - overall text-size control */
+.app{zoom:var(--ui-scale,1);}
+.app .paper{zoom:var(--ui-inverse-scale,1);}
+
+.global-size-control{
+  margin:0 16px 14px;
+  padding:12px 13px;
+  border:1px solid #e0e5ea;
+  border-radius:9px;
+  background:#fafbfc;
+}
+.global-size-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  font-size:13px;
+}
+.global-size-head span{
+  min-width:46px;
+  text-align:center;
+  font-weight:700;
+  color:#34495e;
+}
+.global-size-row{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  margin-top:9px;
+}
+.global-size-row button{
+  width:30px;
+  height:30px;
+  border:1px solid #cfd6dd;
+  border-radius:6px;
+  background:#fff;
+  font-size:20px;
+  line-height:1;
+  cursor:pointer;
+}
+.global-size-row input[type="range"]{flex:1;accent-color:#34495e;}
+.global-size-control small{display:block;margin-top:6px;color:#727d88;font-size:10px;}
+
+@media print{
+  .app{zoom:1!important;}
+  .app .paper{zoom:1!important;}
+}
