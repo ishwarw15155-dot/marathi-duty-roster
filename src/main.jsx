@@ -3330,7 +3330,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
 
       </table>
 
-      <table className="paper-summary">
+      <table className={`paper-summary ${isServantRoster ? "paper-summary-servant" : "paper-summary-regular"}`}>
 
         <colgroup>
           <col className="col-sr" />
@@ -3390,9 +3390,9 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
               सुट्टया
             </th>
             {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyHolidayCounts[dayIndex]||""}</td>)}
-            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
-            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
-            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
+            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
+            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
           </tr>
 
           {customSummaryDuties.map(duty=>
@@ -3425,9 +3425,9 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                 },0)||""}
               </td>
             )}
-            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
-            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
-            <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
+            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
+            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
           </tr>
 
         </tbody>
