@@ -91,18 +91,6 @@ function blankRoster() {
         summaryCount:11,
       summaryAbbr:8
     },
-    tableSizes:{
-      sr:40,
-      roll:58,
-      name:165,
-      day:49,
-      extra:40,
-      row:29,
-      headerRow:43,
-      summaryHeaderRow:37,
-      summaryRow:30,
-      groupRow:33
-    },
     savedAt:null
   };
 }
@@ -148,37 +136,11 @@ function normalizeRoster(data={}) {
       }))
     : base.employees;
 
-  const tableSizes={
-    ...base.tableSizes,
-    ...(data.tableSizes||{})
-  };
-
-  Object.keys(tableSizes).forEach(key=>{
-    const mins={
-      sr:30, roll:40, name:110, day:35, extra:25,
-      row:22, headerRow:30, summaryHeaderRow:28,
-      summaryRow:22, groupRow:24
-    };
-    const maxs={
-      sr:80, roll:100, name:260, day:90, extra:70,
-      row:60, headerRow:70, summaryHeaderRow:65,
-      summaryRow:55, groupRow:60
-    };
-    tableSizes[key]=Math.max(
-      mins[key] ?? 20,
-      Math.min(
-        maxs[key] ?? 100,
-        Number(tableSizes[key]) || base.tableSizes[key]
-      )
-    );
-  });
-
   return {
     ...base,
     ...data,
     fontFamily:data.fontFamily||base.fontFamily,
     globalFontSize:Math.max(12,Math.min(24,Number(data.globalFontSize)||base.globalFontSize)),
-    tableSizes,
     fontSizes:{
       ...base.fontSizes,
       ...(data.fontSizes||{}),
@@ -265,17 +227,34 @@ function transliterateName(name) {
 }
 
 function honorific(gender){
-  if(gender==="female") return "श्रीमती";
-  if(gender==="male") return "श्री";
+  if(gender==="female") return "श्रीमती.";
+  if(gender==="male") return "श्री.";
   return "";
 }
 
 function displayStaffName(employee){
   const name=cleanMarathiText(employee?.marathiName || employee?.englishName || "");
   if(!name) return "—";
-  const clean=name.replace(/^(श्री\.?|श्रीमती\.?|कु\.?|सौ\.?)\s*/," ").trim();
+
+  const clean=name
+    .replace(/^(श्री\.?|श्रीमती\.?|कु\.?|सौ\.?)\s*/,"")
+    .trim();
+
   const prefix=honorific(employee?.gender);
-  return prefix ? `${prefix} ${clean}` : clean;
+
+  /*
+   * Keep every staff/servant name vertically aligned.
+   * The honorific has a fixed-width slot so names begin
+   * at exactly the same horizontal position.
+   */
+  return (
+    <span className="staff-display-name">
+      <span className={`name-prefix${prefix ? "" : " name-prefix-empty"}`}>
+        {prefix || " "}
+      </span>
+      <span className="name-text">{clean}</span>
+    </span>
+  );
 }
 
 function App({user,onLogout,selectedWardId=null,selectedWardName="",selectedRosterType="regular"}) {
@@ -1191,18 +1170,6 @@ function App({user,onLogout,selectedWardId=null,selectedWardName="",selectedRost
               fontSizes:{
                 ...r.fontSizes,
                 [key]:Math.max(7,Math.min(40,Number(v)||r.fontSizes?.[key]||12))
-              }
-            }))}
-          />
-
-          <TableSizeControls
-            tableSizes={roster.tableSizes}
-            isServant={isServantRoster}
-            onChange={(key,v)=>setRoster(r=>({
-              ...r,
-              tableSizes:{
-                ...r.tableSizes,
-                [key]:v
               }
             }))}
           />
@@ -2751,100 +2718,6 @@ function A4SizeControls({fontSizes,onChange}) {
   );
 }
 
-function TableSizeControl({label,value,onChange,min,max,step=1}) {
-  const n=Number(value)||min;
-  return (
-    <div className="table-size-item">
-      <div className="table-size-label">
-        <span>{label}</span>
-        <b>{n}px</b>
-      </div>
-
-      <div className="table-size-controls">
-        <button
-          type="button"
-          onClick={()=>onChange(Math.max(min,n-step))}
-        >
-          −
-        </button>
-
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={n}
-          onChange={e=>onChange(Number(e.target.value))}
-        />
-
-        <button
-          type="button"
-          onClick={()=>onChange(Math.min(max,n+step))}
-        >
-          +
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function TableSizeControls({tableSizes,isServant,onChange}) {
-  const items=[
-    ["sr","अ क्र column",30,80,1],
-
-    ...(!isServant
-      ? [["roll","रोल नं column",40,100,1]]
-      : []),
-
-    ["name","नावे / Name column",110,260,5],
-    ["day","प्रत्येक दिवस column",35,90,1],
-
-    ...(!isServant
-      ? [["extra","नैर / जमा / रुजू column",25,70,1]]
-      : [["extra","जमा column",25,70,1]]),
-
-    ["row","Staff row height",22,60,1],
-    ["headerRow","Main header height",30,70,1],
-    ["groupRow","Post / Group row height",24,60,1],
-    ["summaryHeaderRow","Summary header height",28,65,1],
-    ["summaryRow","Summary row height",22,55,1]
-  ];
-
-  return (
-    <div className="table-size-panel">
-      <div className="table-size-panel-head">
-        <div>
-          <b>Table Width & Row Size / टेबलचा आकार</b>
-          <span>
-            {isServant
-              ? "Servant Duty List"
-              : "Regular Duty List"}
-          </span>
-        </div>
-      </div>
-
-      <div className="table-size-grid">
-        {items.map(([key,label,min,max,step])=>(
-          <TableSizeControl
-            key={key}
-            label={label}
-            value={tableSizes?.[key] ?? min}
-            onChange={v=>onChange(key,v)}
-            min={min}
-            max={max}
-            step={step}
-          />
-        ))}
-      </div>
-
-      <div className="table-size-note">
-        <b>टीप:</b> हे बदल A4 Preview आणि PDF मध्ये लागू होतील.
-        प्रत्येक ward roster मध्ये ही settings जतन होतील.
-      </div>
-    </div>
-  );
-}
-
 function DutyManager({roster,onClose,onAdd,onUpdate,onDelete}) {
   return (
     <div className="modal-backdrop">
@@ -3407,24 +3280,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
   };
 
   return (
-    <div
-      className="paper"
-      ref={ref}
-      style={{
-        fontFamily:fontStack(roster.fontFamily),
-        ...fontVars,
-        "--tbl-sr":`${roster.tableSizes?.sr||40}px`,
-        "--tbl-roll":`${roster.tableSizes?.roll||58}px`,
-        "--tbl-name":`${roster.tableSizes?.name||165}px`,
-        "--tbl-day":`${roster.tableSizes?.day||49}px`,
-        "--tbl-extra":`${roster.tableSizes?.extra||40}px`,
-        "--tbl-row":`${roster.tableSizes?.row||29}px`,
-        "--tbl-header-row":`${roster.tableSizes?.headerRow||43}px`,
-        "--tbl-summary-header-row":`${roster.tableSizes?.summaryHeaderRow||37}px`,
-        "--tbl-summary-row":`${roster.tableSizes?.summaryRow||30}px`,
-        "--tbl-group-row":`${roster.tableSizes?.groupRow||33}px`
-      }}
-    >
+    <div className="paper" ref={ref} style={{fontFamily:fontStack(roster.fontFamily),...fontVars}}>
 
       <div className="print-header">
 
