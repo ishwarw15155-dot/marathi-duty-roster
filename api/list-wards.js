@@ -12,8 +12,9 @@ function getAccessToken(req) {
     : null;
 }
 
-async function getCurrentUser(req) {
-  const accessToken = getAccessToken(req);
+async function getAdmin(req) {
+  const accessToken =
+    getAccessToken(req);
 
   if (!accessToken) {
     return null;
@@ -22,11 +23,29 @@ async function getCurrentUser(req) {
   const {
     data: { user },
     error,
-  } = await supabaseAdmin.auth.getUser(
-    accessToken
-  );
+  } =
+    await supabaseAdmin.auth.getUser(
+      accessToken
+    );
 
   if (error || !user) {
+    return null;
+  }
+
+  const {
+    data: profile,
+    error: profileError,
+  } =
+    await supabaseAdmin
+      .from("profiles")
+      .select("username, role")
+      .eq("user_id", user.id)
+      .single();
+
+  if (
+    profileError ||
+    profile?.role !== "admin"
+  ) {
     return null;
   }
 
@@ -41,49 +60,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    const user = await getCurrentUser(req);
+    const admin =
+      await getAdmin(req);
 
-    if (!user) {
+    if (!admin) {
       return res.status(401).json({
         error: "Not authenticated",
       });
     }
 
     const {
-      data: profile,
-      error: profileError,
-    } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("user_id", user.id)
-      .single();
-
-    if (
-      profileError ||
-      !profile ||
-      profile.role !== "admin"
-    ) {
-      return res.status(403).json({
-        error: "Administrator access required",
-      });
-    }
-
-    const {
       data: wards,
       error,
-    } = await supabaseAdmin
-      .from("wards")
-      .select(
-        "id, ward_name, ward_code, username, active, created_at, updated_at"
-      )
-      .order("ward_name", {
-        ascending: true,
-      });
+    } =
+      await supabaseAdmin
+        .from("wards")
+        .select(
+          "id, ward_name, ward_code, username, active, created_at"
+        )
+        .order("created_at", {
+          ascending: false,
+        });
 
     if (error) {
-      console.error(error);
-
-      return res.status(500).json({
+      return res.status(400).json({
         error: error.message,
       });
     }
@@ -92,11 +92,13 @@ export default async function handler(req, res) {
       ok: true,
       wards: wards || [],
     });
+
   } catch (error) {
     console.error(error);
 
     return res.status(500).json({
-      error: "Server error while loading wards",
+      error:
+        "Server error while loading wards",
     });
   }
 }
