@@ -228,7 +228,7 @@ input:focus,select:focus{
 }
 .paper-summary td,.paper-summary th{height:30px}
 .summary-duty{
-  width:263px!important;
+  width:205px;
   text-align:center!important;
   vertical-align:middle;
   padding-left:0!important;
@@ -356,9 +356,7 @@ input:focus,select:focus{
 }
 
 .paper-summary .summary-duty {
-  width:263px!important;
-  min-width:263px!important;
-  max-width:263px!important;
+  width:auto;
   text-align:center!important;
   vertical-align:middle;
   padding-left:0!important;
@@ -1021,173 +1019,40 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
 }
 
 
-/* FINAL v14.2 - align Summary weekdays exactly with main roster weekdays */
-.paper-summary{
-  width:100%;
-  border-collapse:collapse;
-  table-layout:fixed;
+/* FINAL FIX: summary weekday columns align with the current roster type.
+   Regular roster: 40 + 58 + 165 = 263px before सोम.
+   Servant roster: 40 + 165 = 205px before सोम. */
+.paper-summary-servant .summary-duty {
+  width:205px !important;
+  min-width:205px !important;
+  max-width:205px !important;
 }
-
-.paper-summary .col-sr{width:40px!important;}
-.paper-summary .col-roll{width:58px!important;}
-.paper-summary .col-name{width:165px!important;}
-.paper-summary .col-day{width:49px!important;}
-.paper-summary .col-extra{width:40px!important;}
-
-.paper-summary .summary-duty{
-  width:263px!important;
-  min-width:263px!important;
-  max-width:263px!important;
-  text-align:center!important;
-  vertical-align:middle!important;
+.paper-summary-regular .summary-duty {
+  width:263px !important;
+  min-width:263px !important;
+  max-width:263px !important;
 }
-/* =========================================================
-   FINAL FIX - SUMMARY WEEKDAYS MUST ALIGN WITH MAIN TABLE
-   सोम | मंगळ | बुध | गुरु | शुक्र | शनि | रवि
-   ========================================================= */
-
-.paper-roster,
-.paper-summary {
-  width: 100% !important;
-  border-collapse: collapse !important;
-  table-layout: fixed !important;
+.paper-summary-servant .summary-day,
+.paper-summary-servant .summary-count {
+  width:49px !important;
+  min-width:49px !important;
+  max-width:49px !important;
 }
-
-/* Main roster columns */
-.paper-roster .col-sr {
-  width: 40px !important;
+.paper-summary-regular .summary-day,
+.paper-summary-regular .summary-count {
+  width:49px !important;
+  min-width:49px !important;
+  max-width:49px !important;
 }
-
-.paper-roster .col-roll {
-  width: 58px !important;
-}
-
-.paper-roster .col-name {
-  width: 165px !important;
-}
-
-.paper-roster .col-day {
-  width: 49px !important;
-}
-
-.paper-roster .col-extra {
-  width: 40px !important;
-}
-
-/* Summary MUST use exactly the same first 3 columns */
-.paper-summary .col-sr {
-  width: 40px !important;
-}
-
-.paper-summary .col-roll {
-  width: 58px !important;
-}
-
-.paper-summary .col-name {
-  width: 165px !important;
-}
-
-.paper-summary .col-day {
-  width: 49px !important;
-}
-
-.paper-summary .col-extra {
-  width: 40px !important;
-}
-
-/*
-   40 + 58 + 165 = 263px
-
-   Therefore the summary "ड्युटी" cell that spans
-   the first 3 columns must occupy exactly 263px.
-*/
-.paper-summary .summary-duty {
-  width: 263px !important;
-  min-width: 263px !important;
-  max-width: 263px !important;
-
-  box-sizing: border-box !important;
-
-  text-align: center !important;
-  vertical-align: middle !important;
-
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
-
-/* Force all 7 summary weekday cells to the same width */
-.paper-summary .summary-day {
-  width: 49px !important;
-  min-width: 49px !important;
-  max-width: 49px !important;
-
-  box-sizing: border-box !important;
-
-  text-align: center !important;
-  vertical-align: middle !important;
-}
-
-/* Summary numbers use the exact same day-column geometry */
-.paper-summary .summary-count {
-  width: 49px !important;
-  min-width: 49px !important;
-  max-width: 49px !important;
-
-  box-sizing: border-box !important;
-
-  text-align: center !important;
-  vertical-align: middle !important;
-}
-
-/* Keep the 3 trailing blank columns aligned with नैर / जमा / रुजू */
-.paper-summary .summary-extra {
-  width: 40px !important;
-  min-width: 40px !important;
-  max-width: 40px !important;
-
-  box-sizing: border-box !important;
-}
-
-/* Blank trailing cells stay completely empty */
-.paper-summary .summary-extra-blank {
-  font-size: 0 !important;
-  color: transparent !important;
-  line-height: 0 !important;
-}
-
-/* Prevent older summary rules from changing geometry */
-.paper-summary thead .summary-duty,
-.paper-summary tbody .summary-duty {
-  width: 263px !important;
-  min-width: 263px !important;
-  max-width: 263px !important;
-}
-
-/* Print version uses exactly the same geometry */
 @media print {
-
-  .paper-roster,
-  .paper-summary {
-    width: 100% !important;
-    table-layout: fixed !important;
+  .paper-summary-servant .summary-duty {
+    width:205px !important;
+    min-width:205px !important;
+    max-width:205px !important;
   }
-
-  .paper-summary .summary-duty {
-    width: 263px !important;
-    min-width: 263px !important;
-    max-width: 263px !important;
-  }
-
-  .paper-summary .summary-day,
-  .paper-summary .summary-count {
-    width: 49px !important;
-    min-width: 49px !important;
-    max-width: 49px !important;
-  }
-
-  .paper-summary .summary-extra {
-    width: 40px !important;
-    min-width: 40px !important;
-    max-width: 40px !important;
+  .paper-summary-regular .summary-duty {
+    width:263px !important;
+    min-width:263px !important;
+    max-width:263px !important;
   }
 }
