@@ -1077,87 +1077,208 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
 
 
 /* =========================================================
-   NAME ALIGNMENT - HONORIFIC + STAFF/SERVANT NAMES
+   v15 - Adjustable A4 Table Column Widths + Row Heights
+   Values come from roster.tableSizes and are stored with
+   the ward roster.
    ========================================================= */
-.staff-display-name{
-  display:inline-flex;
-  align-items:baseline;
-  width:100%;
-  min-width:0;
-  vertical-align:baseline;
+
+.paper-roster .col-sr,
+.paper-summary .col-sr {
+  width:var(--tbl-sr,40px) !important;
 }
 
-.name-prefix{
-  display:inline-block;
-  width:64px;
-  min-width:64px;
-  flex:0 0 64px;
-  white-space:nowrap;
-  text-align:left;
+.paper-roster .col-roll,
+.paper-summary .col-roll {
+  width:var(--tbl-roll,58px) !important;
 }
 
-.name-prefix-empty{
-  visibility:hidden;
+.paper-roster .col-name,
+.paper-summary .col-name {
+  width:var(--tbl-name,165px) !important;
 }
 
-.name-text{
-  display:inline-block;
-  min-width:0;
-  flex:1 1 auto;
-  text-align:left;
-  white-space:nowrap;
+.paper-roster .col-day,
+.paper-summary .col-day {
+  width:var(--tbl-day,49px) !important;
+}
+
+.paper-roster .col-extra,
+.paper-summary .col-extra {
+  width:var(--tbl-extra,40px) !important;
+}
+
+/* Main roster row height */
+.paper-roster tbody tr:not(.group-row) td {
+  height:var(--tbl-row,29px) !important;
+  min-height:var(--tbl-row,29px) !important;
+}
+
+/* Main header height */
+.paper-roster thead th {
+  height:var(--tbl-header-row,43px) !important;
+  min-height:var(--tbl-header-row,43px) !important;
+}
+
+/* Post / group separator */
+.paper-roster tbody .group-row td {
+  height:var(--tbl-group-row,33px) !important;
+  min-height:var(--tbl-group-row,33px) !important;
+}
+
+/* Summary header */
+.paper-summary thead th {
+  height:var(--tbl-summary-header-row,37px) !important;
+  min-height:var(--tbl-summary-header-row,37px) !important;
+}
+
+/* Summary body rows */
+.paper-summary tbody tr td,
+.paper-summary tbody tr th {
+  height:var(--tbl-summary-row,30px) !important;
+  min-height:var(--tbl-summary-row,30px) !important;
+}
+
+/* Summary duty label follows the selected first-column widths */
+.paper-summary-regular .summary-duty {
+  width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-roll,58px) +
+    var(--tbl-name,165px)
+  ) !important;
+  min-width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-roll,58px) +
+    var(--tbl-name,165px)
+  ) !important;
+  max-width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-roll,58px) +
+    var(--tbl-name,165px)
+  ) !important;
+}
+
+.paper-summary-servant .summary-duty {
+  width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-name,165px)
+  ) !important;
+  min-width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-name,165px)
+  ) !important;
+  max-width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-name,165px)
+  ) !important;
+}
+
+/* Ensure the draggable/slider UI is easy to use */
+.table-size-panel {
+  margin:0 20px 14px;
+  border:1px solid #dce2e8;
+  border-radius:9px;
+  background:#fafbfc;
   overflow:hidden;
-  text-overflow:clip;
 }
 
-/* Main roster / assignment table */
-.assign-name .staff-display-name{
-  width:100%;
+.table-size-panel-head {
+  padding:10px 12px;
+  border-bottom:1px solid #e1e6eb;
+  background:#f4f6f8;
 }
 
-.assign-name .name-prefix{
-  width:64px;
-  min-width:64px;
-  flex-basis:64px;
+.table-size-panel-head div {
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:10px;
+  flex-wrap:wrap;
 }
 
-/* Printable A4 roster - every name begins at the same x-position */
-.paper-roster .print-name .staff-display-name,
-.paper-roster .print-name-inline .staff-display-name{
-  display:inline-flex !important;
-  align-items:baseline !important;
-  width:100% !important;
-  min-width:0 !important;
-  gap:0 !important;
+.table-size-panel-head b {
+  font-size:12px;
+  color:#35404b;
 }
 
-.paper-roster .print-name .name-prefix,
-.paper-roster .print-name-inline .name-prefix{
-  width:64px !important;
-  min-width:64px !important;
-  flex:0 0 64px !important;
-  text-align:left !important;
-  white-space:nowrap !important;
+.table-size-panel-head span {
+  font-size:10px;
+  color:#77828d;
 }
 
-.paper-roster .print-name .name-text,
-.paper-roster .print-name-inline .name-text{
-  flex:1 1 auto !important;
-  min-width:0 !important;
-  text-align:left !important;
-  white-space:nowrap !important;
+.table-size-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px 12px;
+  padding:11px 12px 8px;
 }
 
-@media print{
-  .paper-roster .print-name .staff-display-name,
-  .paper-roster .print-name-inline .staff-display-name{
-    width:100% !important;
+.table-size-item {
+  padding:8px 9px;
+  border:1px solid #e1e5e9;
+  border-radius:7px;
+  background:#fff;
+}
+
+.table-size-label {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  font-size:10px;
+  color:#52606d;
+  margin-bottom:6px;
+}
+
+.table-size-label b {
+  font-size:10px;
+  color:#34495e;
+  white-space:nowrap;
+}
+
+.table-size-controls {
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+
+.table-size-controls button {
+  width:26px;
+  height:26px;
+  flex:0 0 26px;
+  border:1px solid #cfd6dd;
+  border-radius:5px;
+  background:#fff;
+  color:#34495e;
+  font-size:18px;
+  line-height:1;
+  padding:0;
+}
+
+.table-size-controls button:hover {
+  background:#f1f4f7;
+}
+
+.table-size-controls input[type="range"] {
+  flex:1;
+  min-width:0;
+  accent-color:#34495e;
+}
+
+.table-size-note {
+  padding:8px 12px 11px;
+  font-size:10px;
+  line-height:1.5;
+  color:#69737e;
+}
+
+@media(max-width:700px) {
+  .table-size-grid {
+    grid-template-columns:1fr;
   }
+}
 
-  .paper-roster .print-name .name-prefix,
-  .paper-roster .print-name-inline .name-prefix{
-    width:64px !important;
-    min-width:64px !important;
-    flex:0 0 64px !important;
+@media print {
+  .table-size-panel {
+    display:none !important;
   }
 }
