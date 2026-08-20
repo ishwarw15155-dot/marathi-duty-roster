@@ -3340,6 +3340,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
           {!isServantRoster && <col className="col-extra" />}
           {!isServantRoster && <col className="col-extra" />}
           {!isServantRoster && <col className="col-extra" />}
+          {isServantRoster && <col className="col-extra" />}
         </colgroup>
 
         <thead>
@@ -3354,9 +3355,10 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                 <small>{d.date}</small>
               </th>
             )}
-            {/* Keep three blank columns so सोम–रवि stay in the exact same
-                horizontal positions as the main table. No नैर/जमा/रुजू
-                labels or summary values are shown here. */}
+            {/* Match the main roster's trailing columns exactly.
+                Regular roster: नैर / जमा / रुजू.
+                Servant roster: जमा only. */}
+            {isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
             {!isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
             {!isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
             {!isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
@@ -3379,6 +3381,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                     : (dailyDutyCounts[dayIndex][duty.key]||"")}
                 </td>
               )}
+              {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
@@ -3390,6 +3393,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
               सुट्टया
             </th>
             {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyHolidayCounts[dayIndex]||""}</td>)}
+            {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
@@ -3402,6 +3406,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                 <span className="summary-abbr">({duty.abbr})</span>
               </th>
               {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyDutyCounts[dayIndex][duty.key]||""}</td>)}
+              {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
@@ -3425,6 +3430,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                 },0)||""}
               </td>
             )}
+            {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
