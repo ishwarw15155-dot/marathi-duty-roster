@@ -228,7 +228,7 @@ input:focus,select:focus{
 }
 .paper-summary td,.paper-summary th{height:30px}
 .summary-duty{
-  width:205px;
+  width:263px!important;
   text-align:center!important;
   vertical-align:middle;
   padding-left:0!important;
@@ -356,7 +356,9 @@ input:focus,select:focus{
 }
 
 .paper-summary .summary-duty {
-  width:auto;
+  width:263px!important;
+  min-width:263px!important;
+  max-width:263px!important;
   text-align:center!important;
   vertical-align:middle;
   padding-left:0!important;
@@ -1016,4 +1018,26 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
     white-space:normal !important;
     overflow-wrap:anywhere !important;
   }
+}
+
+
+/* FINAL v14.2 - align Summary weekdays exactly with main roster weekdays */
+.paper-summary{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+}
+
+.paper-summary .col-sr{width:40px!important;}
+.paper-summary .col-roll{width:58px!important;}
+.paper-summary .col-name{width:165px!important;}
+.paper-summary .col-day{width:49px!important;}
+.paper-summary .col-extra{width:40px!important;}
+
+.paper-summary .summary-duty{
+  width:263px!important;
+  min-width:263px!important;
+  max-width:263px!important;
+  text-align:center!important;
+  vertical-align:middle!important;
 }
