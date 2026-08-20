@@ -240,8 +240,10 @@ function displayStaffName(employee){
   return prefix ? `${prefix} ${clean}` : clean;
 }
 
-function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
+function App({user,onLogout,selectedWardId=null,selectedWardName="",selectedRosterType="regular"}) {
   const userRole=String(user?.role||"").trim().toLowerCase();
+  const rosterType=selectedRosterType==="servant" ? "servant" : "regular";
+  const isServantRoster=rosterType==="servant";
 
   const cloudWardId=
     selectedWardId ||
@@ -320,11 +322,19 @@ function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
           return;
         }
 
-        const loaded=
+        const stored=
           data?.roster &&
           typeof data.roster==="object"
             ? data.roster
             : {};
+
+        let loaded=stored;
+
+        if(stored.__rosterVersion===2){
+          loaded=stored[rosterType] || {};
+        }else if(rosterType==="servant"){
+          loaded={};
+        }
 
         setRoster(
           normalizeRoster(loaded)
@@ -349,7 +359,7 @@ function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
     return()=>{
       cancelled=true;
     };
-  },[isCloudRoster,cloudWardId]);
+  },[isCloudRoster,cloudWardId,rosterType]);
 
   useEffect(()=>{
     if(!isCloudRoster){
@@ -743,18 +753,35 @@ function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
       try{
         setCloudError("");
 
+        const existingRes=await fetch(
+          `/api/ward-roster?wardId=${encodeURIComponent(cloudWardId)}`,
+          {method:"GET",credentials:"include"}
+        );
+        const existingData=await existingRes.json().catch(()=>({}));
+        if(!existingRes.ok){
+          throw new Error(existingData.error||"Unable to load existing ward roster.");
+        }
+
+        const existingStored=
+          existingData?.roster &&
+          typeof existingData.roster==="object"
+            ? existingData.roster
+            : {};
+
+        const combined=
+          existingStored.__rosterVersion===2
+            ? {...existingStored,[rosterType]:next}
+            : rosterType==="regular"
+              ? {__rosterVersion:2,regular:next,servant:{}}
+              : {__rosterVersion:2,regular:existingStored,servant:next};
+
         const res=await fetch(
           "/api/ward-roster",
           {
             method:"POST",
             credentials:"include",
-            headers:{
-              "Content-Type":"application/json"
-            },
-            body:JSON.stringify({
-              wardId:cloudWardId,
-              roster:next
-            })
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({wardId:cloudWardId,roster:combined})
           }
         );
 
@@ -929,6 +956,7 @@ function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
               onClick={()=>{
                 sessionStorage.removeItem("admin_selected_ward_id");
                 sessionStorage.removeItem("admin_selected_ward_name");
+                sessionStorage.removeItem("admin_selected_roster_type");
                 window.location.href="/";
               }}
             >
@@ -1019,7 +1047,7 @@ function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
         {tab==="editor"?<>
 
           <div className="heading">
-            <h1>Create Duty List</h1>
+            <h1>{isServantRoster ? "Servant Duty List" : "Create Duty List"}</h1>
             <p>
               Ward template वापरून पुढील आठवड्यात staff list पुन्हा वापरता येईल.
             </p>
@@ -1197,13 +1225,13 @@ function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
                 <tr>
                   <th>#</th>
                   <th>वर्ग</th>
-                  <th>Roll No.</th>
+                  {!isServantRoster && <th>Roll No.</th>}
                   <th>लिंग / Gender</th>
                   <th>English Name</th>
                   <th>मराठी नाव / Style</th>
-                  <th>नैर</th>
+                  {!isServantRoster && <th>नैर</th>}
                   <th>जमा</th>
-                  <th>रुजू</th>
+                  {!isServantRoster && <th>रुजू</th>}
                   <th>Insert / Delete</th>
                 </tr>
               </thead>
@@ -1232,13 +1260,15 @@ function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
                     </select>
                   </td>
 
-                  <td>
-                    <input
-                      value={e.rollNo}
-                      placeholder="2/114"
-                      onChange={x=>editEmployee(e.id,"rollNo",x.target.value)}
-                    />
-                  </td>
+                  {!isServantRoster && (
+                    <td>
+                      <input
+                        value={e.rollNo}
+                        placeholder="2/114"
+                        onChange={x=>editEmployee(e.id,"rollNo",x.target.value)}
+                      />
+                    </td>
+                  )}
 
                   <td>
                     <select
@@ -1347,9 +1377,11 @@ function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
 
                   </td>
 
-                  <td><input value={e.nair||""} placeholder="" onChange={x=>editEmployee(e.id,"nair",x.target.value)} /></td>
+                  {!isServantRoster && <td><input value={e.nair||""} placeholder="" onChange={x=>editEmployee(e.id,"nair",x.target.value)} />
+                  </td>}
                   <td><input value={e.jama||""} placeholder="" onChange={x=>editEmployee(e.id,"jama",x.target.value)} /></td>
-                  <td><input value={e.ruju||""} placeholder="" onChange={x=>editEmployee(e.id,"ruju",x.target.value)} /></td>
+                  {!isServantRoster && <td><input value={e.ruju||""} placeholder="" onChange={x=>editEmployee(e.id,"ruju",x.target.value)} />
+                  </td>}
 
                   <td>
 
@@ -1540,6 +1572,7 @@ function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
                 ref={paperRef}
                 roster={roster}
                 labels={dayLabels}
+                rosterType={rosterType}
               />
 
             </div>
@@ -1940,34 +1973,20 @@ function AdminDashboard({user,onLogout}){
     }
   };
 
-  const openWard=ward=>{
-    const wardId=
-      ward?.id||
-      ward?.ward_id||
-      null;
-
+  const openWard=(ward,type="regular")=>{
+    const wardId=ward?.id||ward?.ward_id||null;
     if(!wardId){
       setError("Ward ID is missing.");
       return;
     }
 
-    sessionStorage.setItem(
-      "admin_selected_ward_id",
-      String(wardId)
-    );
+    const wardName=String(ward?.ward_name||ward?.name||ward?.ward||"");
 
-    sessionStorage.setItem(
-      "admin_selected_ward_name",
-      String(
-        ward?.ward_name||
-        ward?.name||
-        ward?.ward||
-        ""
-      )
-    );
+    sessionStorage.setItem("admin_selected_ward_id",String(wardId));
+    sessionStorage.setItem("admin_selected_ward_name",wardName);
+    sessionStorage.setItem("admin_selected_roster_type",type==="servant"?"servant":"regular");
 
-    window.location.href=
-      `/?ward=${encodeURIComponent(wardId)}`;
+    window.location.href=`/?ward=${encodeURIComponent(wardId)}&type=${type==="servant"?"servant":"regular"}`;
   };
 
   return (
@@ -2210,11 +2229,15 @@ function AdminDashboard({user,onLogout}){
                           }}
                         >
                           <button
-                            onClick={()=>
-                              openWard(ward)
-                            }
+                            onClick={()=>openWard(ward,"regular")}
                           >
-                            Open Roster
+                            Regular Duty List
+                          </button>
+
+                          <button
+                            onClick={()=>openWard(ward,"servant")}
+                          >
+                            Servant Duty List
                           </button>
 
                           <button
@@ -2399,6 +2422,17 @@ function AppShell(){
     }
   });
 
+  const [selectedRosterType,setSelectedRosterType]=useState(()=>{
+    try{
+      const params=new URLSearchParams(window.location.search);
+      return params.get("type")==="servant" || sessionStorage.getItem("admin_selected_roster_type")==="servant"
+        ? "servant"
+        : "regular";
+    }catch{
+      return "regular";
+    }
+  });
+
   const loadAuth=async()=>{
     try{
       const response=await fetch(
@@ -2446,9 +2480,13 @@ function AppShell(){
     sessionStorage.removeItem(
       "admin_selected_ward_name"
     );
+    sessionStorage.removeItem(
+      "admin_selected_roster_type"
+    );
 
     setSelectedWardId(null);
     setSelectedWardName("");
+    setSelectedRosterType("regular");
     setAuth(null);
   };
 
@@ -2460,9 +2498,13 @@ function AppShell(){
     sessionStorage.removeItem(
       "admin_selected_ward_name"
     );
+    sessionStorage.removeItem(
+      "admin_selected_roster_type"
+    );
 
     setSelectedWardId(null);
     setSelectedWardName("");
+    setSelectedRosterType("regular");
 
     window.history.replaceState(
       {},
@@ -2505,6 +2547,7 @@ function AppShell(){
         onLogout={logout}
         selectedWardId={selectedWardId}
         selectedWardName={selectedWardName}
+        selectedRosterType={selectedRosterType}
       />
     );
   }
@@ -3114,7 +3157,9 @@ function WeeklyHistoryModal({onClose,onLoad,onDelete}) {
   );
 }
 
-const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
+const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterType="regular"},ref){
+
+  const isServantRoster=rosterType==="servant";
 
   const groups=getPosts(roster)
     .map(group=>({
@@ -3228,19 +3273,19 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
 
         <colgroup>
           <col className="col-sr" />
-          <col className="col-roll" />
+          {!isServantRoster && <col className="col-roll" />}
           <col className="col-name" />
           {labels.map((_,i)=><col className="col-day" key={i} />)}
-          <col className="col-extra" />
-          <col className="col-extra" />
-          <col className="col-extra" />
+          {!isServantRoster && <col className="col-extra" />}
+          {!isServantRoster && <col className="col-extra" />}
+          {!isServantRoster && <col className="col-extra" />}
         </colgroup>
 
         <thead>
           <tr>
 
             <th className="p-sr">अ क्र</th>
-            <th className="p-roll">रोल नं</th>
+            {!isServantRoster && <th className="p-roll">रोल नं</th>}
             <th className="p-name">नावे</th>
 
             {labels.map((d,i)=>
@@ -3249,9 +3294,9 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                 <small>{d.date}</small>
               </th>
             )}
-            <th className="p-extra">नैर</th>
+            {!isServantRoster && <th className="p-extra">नैर</th>}
             <th className="p-extra">जमा</th>
-            <th className="p-extra">रुजू</th>
+            {!isServantRoster && <th className="p-extra">रुजू</th>}
 
           </tr>
         </thead>
@@ -3262,7 +3307,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
             <React.Fragment key={section.group}>
 
               <tr className="group-row">
-                <td colSpan={13}>
+                <td colSpan={isServantRoster ? 10 : 13}>
                   {section.group}
                 </td>
               </tr>
@@ -3274,6 +3319,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                   index={i}
                   duties={roster.duties}
                   from={roster.from}
+                  rosterType={rosterType}
                 />
               )}
 
@@ -3288,17 +3334,17 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
 
         <colgroup>
           <col className="col-sr" />
-          <col className="col-roll" />
+          {!isServantRoster && <col className="col-roll" />}
           <col className="col-name" />
           {labels.map((_,i)=><col className="col-day" key={i} />)}
-          <col className="col-extra" />
-          <col className="col-extra" />
-          <col className="col-extra" />
+          {!isServantRoster && <col className="col-extra" />}
+          {!isServantRoster && <col className="col-extra" />}
+          {!isServantRoster && <col className="col-extra" />}
         </colgroup>
 
         <thead>
           <tr>
-            <th className="summary-duty" colSpan={3}>
+            <th className="summary-duty" colSpan={isServantRoster ? 2 : 3}>
               ड्युटी
             </th>
 
@@ -3311,9 +3357,9 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
             {/* Keep three blank columns so सोम–रवि stay in the exact same
                 horizontal positions as the main table. No नैर/जमा/रुजू
                 labels or summary values are shown here. */}
-            <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>
-            <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>
-            <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>
+            {!isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
+            {!isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
+            {!isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
 
           </tr>
         </thead>
@@ -3322,7 +3368,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
 
           {summaryDuties.map(duty=>
             <tr key={duty.key}>
-              <th className="summary-duty summary-label" colSpan={3}>
+              <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
                 {duty.label}
                 <span className="summary-abbr">({duty.abbr})</span>
               </th>
@@ -3333,14 +3379,14 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
                     : (dailyDutyCounts[dayIndex][duty.key]||"")}
                 </td>
               )}
-              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
-              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
-              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
+              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
+              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             </tr>
           )}
 
           <tr>
-            <th className="summary-duty summary-label" colSpan={3}>
+            <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
               सुट्टया
             </th>
             {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyHolidayCounts[dayIndex]||""}</td>)}
@@ -3351,19 +3397,19 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
 
           {customSummaryDuties.map(duty=>
             <tr key={`custom-summary-${duty.key}`}>
-              <th className="summary-duty summary-label" colSpan={3}>
+              <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
                 {duty.label}
                 <span className="summary-abbr">({duty.abbr})</span>
               </th>
               {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyDutyCounts[dayIndex][duty.key]||""}</td>)}
-              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
-              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
-              <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>
+              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
+              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
+              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             </tr>
           )}
 
           <tr className="grand-total">
-            <th className="summary-duty summary-label" colSpan={3}>
+            <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
               एकूण
             </th>
 
@@ -3392,7 +3438,8 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels},ref){
   );
 });
 
-function PrintableRow({employee,index,duties,from}) {
+function PrintableRow({employee,index,duties,from,rosterType="regular"}) {
+  const isServantRoster=rosterType==="servant";
   const hasLeave=!!(employee.leaveType && employee.leaveFrom && employee.leaveTo);
   const leaveDays=hasLeave
     ? Array.from({length:7},(_,i)=>{
@@ -3442,7 +3489,7 @@ function PrintableRow({employee,index,duties,from}) {
 
       <td className="print-sr-cell">{index+1}</td>
 
-      <td className="print-roll-cell">{employee.rollNo}</td>
+      {!isServantRoster && <td className="print-roll-cell">{employee.rollNo}</td>}
 
       <td
         className="print-name"
@@ -3458,9 +3505,9 @@ function PrintableRow({employee,index,duties,from}) {
 
       {dayCells}
 
-      <td className="print-extra">{employee.nair||""}</td>
+      {!isServantRoster && <td className="print-extra">{employee.nair||""}</td>}
       <td className="print-extra">{employee.jama||""}</td>
-      <td className="print-extra">{employee.ruju||""}</td>
+      {!isServantRoster && <td className="print-extra">{employee.ruju||""}</td>}
 
     </tr>
   );
