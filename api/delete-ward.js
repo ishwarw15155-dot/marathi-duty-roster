@@ -1,39 +1,23 @@
 import { supabaseAdmin } from "./_supabaseAdmin.js";
-import { getSecret } from "./_auth.js";
 
-function getSession(req) {
+function getAccessToken(req) {
   const cookie = req.headers.cookie || "";
-  const match = cookie.match(/(?:^|;\s*)duty_auth=([^;]+)/);
 
-  if (!match) return null;
+  const match = cookie.match(
+    /(?:^|;\s*)sb_access_token=([^;]+)/
+  );
 
-  try {
-    const token = decodeURIComponent(match[1]);
-
-    const session = JSON.parse(
-      Buffer.from(token, "base64url").toString("utf8")
-    );
-
-    if (!session || !session.username || !session.role) {
-      return null;
-    }
-
-    if (session.secret !== getSecret()) {
-      return null;
-    }
-
-    return session;
-  } catch {
-    return null;
-  }
+  return match
+    ? decodeURIComponent(match[1])
+    : null;
 }
 
 async function requireAdmin(req) {
-  const session = getSession(req);
+  const token =
+    getAccessToken(req);
 
-  if (!session) {
+  if (!token) {
     return {
-      session: null,
       error: {
         status: 401,
         message: "Not authenticated",
@@ -41,64 +25,109 @@ async function requireAdmin(req) {
     };
   }
 
-  if (session.role !== "admin") {
+  const {
+    data: { user },
+    error: authError,
+  } =
+    await supabaseAdmin.auth.getUser(
+      token
+    );
+
+  if (authError || !user) {
     return {
-      session: null,
+      error: {
+        status: 401,
+        message: "Not authenticated",
+      },
+    };
+  }
+
+  const {
+    data: profile,
+    error: profileError,
+  } =
+    await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+
+  if (
+    profileError ||
+    profile?.role !== "admin"
+  ) {
+    return {
       error: {
         status: 403,
-        message: "Administrator access required",
+        message:
+          "Administrator access required",
       },
     };
   }
 
   return {
-    session,
+    user,
     error: null,
   };
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST" && req.method !== "DELETE") {
+  if (
+    req.method !== "DELETE" &&
+    req.method !== "POST"
+  ) {
     return res.status(405).json({
       error: "Method not allowed",
     });
   }
 
   try {
-    const auth = await requireAdmin(req);
+    const auth =
+      await requireAdmin(req);
 
     if (auth.error) {
-      return res.status(auth.error.status).json({
-        error: auth.error.message,
+      return res.status(
+        auth.error.status
+      ).json({
+        error:
+          auth.error.message,
       });
     }
 
-    const { wardId } = req.body || {};
+    const { wardId } =
+      req.body || {};
 
     if (!wardId) {
       return res.status(400).json({
-        error: "Ward ID is required",
+        error:
+          "Ward ID is required",
       });
     }
 
     const {
       data: membership,
       error: membershipError,
-    } = await supabaseAdmin
-      .from("ward_members")
-      .select("user_id")
-      .eq("ward_id", wardId)
-      .maybeSingle();
+    } =
+      await supabaseAdmin
+        .from("ward_members")
+        .select("user_id")
+        .eq("ward_id", wardId)
+        .maybeSingle();
 
     if (membershipError) {
       return res.status(400).json({
-        error: membershipError.message,
+        error:
+          membershipError.message,
       });
     }
 
-    const wardUserId = membership?.user_id || null;
+    const wardUserId =
+      membership?.user_id ||
+      null;
 
-    const { error: wardError } =
+    const {
+      error: wardError,
+    } =
       await supabaseAdmin
         .from("wards")
         .delete()
@@ -125,7 +154,7 @@ export default async function handler(req, res) {
 
       if (authDeleteError) {
         console.error(
-          "Ward Auth user deletion failed:",
+          "Auth user deletion failed:",
           authDeleteError
         );
       }
@@ -133,13 +162,19 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      message: "Ward deleted successfully",
+      message:
+        "Ward deleted successfully",
     });
+
   } catch (error) {
-    console.error("Delete ward error:", error);
+    console.error(
+      "Delete ward error:",
+      error
+    );
 
     return res.status(500).json({
-      error: "Server error while deleting ward",
+      error:
+        "Server error while deleting ward",
     });
   }
 }
