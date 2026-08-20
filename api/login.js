@@ -1,11 +1,34 @@
+import { createClient } from "@supabase/supabase-js";
+import {
+  getSupabaseConfig,
+  getAdmin,
+} from "./_auth.js";
 import { supabaseAdmin } from "./_supabaseAdmin.js";
 
-function send(res, status, body, headers = {}) {
-  Object.entries(headers).forEach(([key, value]) => {
-    res.setHeader(key, value);
-  });
-
+function send(res, status, body) {
   return res.status(status).json(body);
+}
+
+function setAuthCookies(res, session) {
+  const cookies = [];
+
+  if (session?.access_token) {
+    cookies.push(
+      `sb_access_token=${encodeURIComponent(
+        session.access_token
+      )}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=3600`
+    );
+  }
+
+  if (session?.refresh_token) {
+    cookies.push(
+      `sb_refresh_token=${encodeURIComponent(
+        session.refresh_token
+      )}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=2592000`
+    );
+  }
+
+  res.setHeader("Set-Cookie", cookies);
 }
 
 export default async function handler(req, res) {
@@ -16,7 +39,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { username, password } = req.body || {};
+    const {
+      username,
+      password,
+    } = req.body || {};
 
     if (!username || !password) {
       return send(res, 400, {
@@ -24,145 +50,232 @@ export default async function handler(req, res) {
       });
     }
 
-    /*
-     * Supabase Auth uses email/password.
-     *
-     * Our application displays a username, so internally
-     * we use:
-     *
-     * admin      -> admin@hospital.local
-     * ward26     -> ward26@ward.local
-     */
-    let email;
+    const cleanUsername = String(username).trim();
 
-    if (username === "admin") {
-      email = "admin@hospital.local";
+    let profile = null;
+
+    /*
+     * First check the admin account.
+     */
+    const admin = getAdmin();
+
+    if (cleanUsername === admin.username) {
+      profile = {
+        username: admin.username,
+        display_name: admin.name,
+        role: "admin",
+        user_id: null,
+        ward_id: null,
+        email:
+          admin.email ||
+          "admin@hospital.local",
+      };
     } else {
-      email = `${username.trim()}@ward.local`;
+      /*
+       * Otherwise find the ward user.
+       */
+      const {
+        data,
+        error,
+      } = await supabaseAdmin
+        .from("profiles")
+        .select(
+          "user_id, username, display_name, role"
+        )
+        .eq("username", cleanUsername)
+        .maybeSingle();
+
+      if (error) {
+        console.error(
+          "Profile lookup error:",
+          error
+        );
+
+        return send(res, 500, {
+          error: "Unable to find user profile",
+        });
+      }
+
+      if (!data) {
+        return send(res, 401, {
+          error: "Invalid username or password",
+        });
+      }
+
+      profile = data;
+
+      /*
+       * Ward must be assigned to exactly one ward.
+       */
+      if (profile.role === "ward") {
+        const {
+          data: membership,
+          error: membershipError,
+        } = await supabaseAdmin
+          .from("ward_members")
+          .select("ward_id")
+          .eq("user_id", profile.user_id)
+          .maybeSingle();
+
+        if (membershipError) {
+          console.error(
+            membershipError
+          );
+
+          return send(res, 500, {
+            error:
+              "Unable to find ward assignment",
+          });
+        }
+
+        if (!membership?.ward_id) {
+          return send(res, 403, {
+            error:
+              "User is not assigned to a ward",
+          });
+        }
+
+        const {
+          data: ward,
+          error: wardError,
+        } = await supabaseAdmin
+          .from("wards")
+          .select(
+            "id, ward_name, ward_code, username, active"
+          )
+          .eq("id", membership.ward_id)
+          .single();
+
+        if (wardError || !ward) {
+          return send(res, 403, {
+            error: "Ward not found",
+          });
+        }
+
+        if (!ward.active) {
+          return send(res, 403, {
+            error: "This ward login is inactive",
+          });
+        }
+
+        profile.ward_id = ward.id;
+        profile.ward = ward;
+      }
+    }
+
+    /*
+     * Find the actual Supabase Auth email.
+     */
+    let authEmail = profile.email;
+
+    if (!authEmail && profile.user_id) {
+      const {
+        data: authResult,
+        error: authLookupError,
+      } =
+        await supabaseAdmin.auth.admin.getUserById(
+          profile.user_id
+        );
+
+      if (
+        !authLookupError &&
+        authResult?.user?.email
+      ) {
+        authEmail = authResult.user.email;
+      }
+    }
+
+    /*
+     * Admin user normally uses the configured admin
+     * email. Ward accounts use username@ward.local.
+     */
+    if (!authEmail) {
+      if (profile.role === "ward") {
+        authEmail = `${cleanUsername}@ward.local`;
+      } else {
+        authEmail = `${cleanUsername}@hospital.local`;
+      }
     }
 
     const {
-      data,
-      error,
-    } = await supabaseAdmin.auth.signInWithPassword({
-      email,
-      password,
-    });
+      url,
+      key,
+    } = getSupabaseConfig();
 
-    if (error || !data?.session || !data?.user) {
+    const supabaseAuth = createClient(
+      url,
+      key,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+
+    const {
+      data: authData,
+      error: authError,
+    } =
+      await supabaseAuth.auth.signInWithPassword({
+        email: authEmail,
+        password,
+      });
+
+    if (authError || !authData?.session) {
+      console.error(
+        "Supabase login error:",
+        authError
+      );
+
       return send(res, 401, {
         error: "Invalid username or password",
       });
     }
 
-    const accessToken = data.session.access_token;
-    const refreshToken = data.session.refresh_token;
-
     /*
-     * Store both Supabase tokens in HttpOnly cookies.
-     * The browser cannot read these cookies from JavaScript.
+     * Store the real Supabase access token.
      */
-
-    const cookies = [
-      `sb_access_token=${encodeURIComponent(accessToken)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=3600`,
-      `sb_refresh_token=${encodeURIComponent(refreshToken)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=2592000`,
-    ];
-
-    /*
-     * Get application profile.
-     */
-    const {
-      data: profile,
-      error: profileError,
-    } = await supabaseAdmin
-      .from("profiles")
-      .select(
-        "user_id, username, display_name, role"
-      )
-      .eq("user_id", data.user.id)
-      .single();
-
-    if (profileError || !profile) {
-      return send(res, 403, {
-        error: "User profile is not configured",
-      });
-    }
-
-    /*
-     * Ward user:
-     * Find exactly which ward belongs to this user.
-     */
-    let ward = null;
-
-    if (profile.role === "ward") {
-      const {
-        data: membership,
-        error: membershipError,
-      } = await supabaseAdmin
-        .from("ward_members")
-        .select("ward_id")
-        .eq("user_id", data.user.id)
-        .single();
-
-      if (
-        membershipError ||
-        !membership
-      ) {
-        return send(res, 403, {
-          error: "No ward is assigned to this user",
-        });
-      }
-
-      const {
-        data: wardData,
-      } = await supabaseAdmin
-        .from("wards")
-        .select(
-          "id, ward_name, ward_code, username, active"
-        )
-        .eq("id", membership.ward_id)
-        .single();
-
-      if (!wardData) {
-        return send(res, 403, {
-          error: "Ward not found",
-        });
-      }
-
-      if (wardData.active === false) {
-        return send(res, 403, {
-          error: "This ward account is inactive",
-        });
-      }
-
-      ward = wardData;
-    }
-
-    return send(
+    setAuthCookies(
       res,
-      200,
-      {
-        ok: true,
-
-        user: {
-          id: data.user.id,
-          username: profile.username,
-          name:
-            profile.display_name ||
-            profile.username,
-          role: profile.role,
-          ward,
-        },
-      },
-      {
-        "Set-Cookie": cookies,
-      }
+      authData.session
     );
+
+    return send(res, 200, {
+      ok: true,
+      user: {
+        id:
+          profile.user_id ||
+          authData.user.id,
+
+        username:
+          profile.username,
+
+        name:
+          profile.display_name ||
+          profile.username,
+
+        role:
+          profile.role,
+
+        ward:
+          profile.ward || null,
+
+        ward_id:
+          profile.ward_id || null,
+      },
+    });
+
   } catch (error) {
-    console.error("Login error:", error);
+    console.error(
+      "Login error:",
+      error
+    );
 
     return send(res, 500, {
-      error: "Server error during login",
+      error:
+        error.message ||
+        "Server error during login",
     });
   }
 }
