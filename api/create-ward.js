@@ -1,74 +1,53 @@
 import { supabaseAdmin } from "./_supabaseAdmin.js";
-import { getSecret } from "./_auth.js";
 
-function getSession(req) {
+function getAccessToken(req) {
   const cookie = req.headers.cookie || "";
-  const match = cookie.match(/(?:^|;\s*)duty_auth=([^;]+)/);
 
-  if (!match) return null;
+  const match = cookie.match(
+    /(?:^|;\s*)sb_access_token=([^;]+)/
+  );
 
-  try {
-    const token = decodeURIComponent(match[1]);
-    const session = JSON.parse(
-      Buffer.from(token, "base64url").toString("utf8")
-    );
+  return match
+    ? decodeURIComponent(match[1])
+    : null;
+}
 
-    if (!session || !session.username || !session.role) {
-      return null;
-    }
+async function getCurrentUser(req) {
+  const accessToken = getAccessToken(req);
 
-    if (session.secret !== getSecret()) {
-      return null;
-    }
-
-    return session;
-  } catch {
+  if (!accessToken) {
     return null;
   }
-}
 
-async function requireAdmin(req) {
-  const session = getSession(req);
+  const {
+    data: { user },
+    error,
+  } = await supabaseAdmin.auth.getUser(
+    accessToken
+  );
 
-  if (!session) {
-    return {
-      session: null,
-      error: {
-        status: 401,
-        message: "Not authenticated",
-      },
-    };
+  if (error || !user) {
+    return null;
   }
 
-  if (session.role !== "admin") {
-    return {
-      session: null,
-      error: {
-        status: 403,
-        message: "Administrator access required",
-      },
-    };
-  }
-
-  return {
-    session,
-    error: null,
-  };
+  return user;
 }
 
-async function getAdminUserId(username) {
-  const { data, error } = await supabaseAdmin
+async function isAdmin(userId) {
+  const {
+    data: profile,
+    error,
+  } = await supabaseAdmin
     .from("profiles")
-    .select("user_id")
-    .eq("username", username)
-    .eq("role", "admin")
+    .select("role")
+    .eq("user_id", userId)
     .single();
 
-  if (error || !data?.user_id) {
-    return null;
-  }
-
-  return data.user_id;
+  return (
+    !error &&
+    profile &&
+    profile.role === "admin"
+  );
 }
 
 export default async function handler(req, res) {
@@ -79,11 +58,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const auth = await requireAdmin(req);
+    const user = await getCurrentUser(req);
 
-    if (auth.error) {
-      return res.status(auth.error.status).json({
-        error: auth.error.message,
+    if (!user) {
+      return res.status(401).json({
+        error: "Not authenticated",
+      });
+    }
+
+    const admin = await isAdmin(user.id);
+
+    if (!admin) {
+      return res.status(403).json({
+        error: "Administrator access required",
       });
     }
 
@@ -109,9 +96,11 @@ export default async function handler(req, res) {
     }
 
     const cleanWardName = wardName.trim();
-    const cleanWardCode = wardCode?.trim() || null;
+    const cleanWardCode =
+      wardCode?.trim() || null;
     const cleanUsername = username.trim();
 
+    // Check duplicate username.
     const {
       data: existingWard,
       error: existingError,
@@ -134,19 +123,16 @@ export default async function handler(req, res) {
       });
     }
 
-    // Find administrator's real user ID for updated_by.
-    const adminUserId = await getAdminUserId(
-      auth.session.username
-    );
-
+    // Create Supabase Auth user.
     const {
       data: authData,
       error: authError,
-    } = await supabaseAdmin.auth.admin.createUser({
-      email: `${cleanUsername}@ward.local`,
-      password,
-      email_confirm: true,
-    });
+    } =
+      await supabaseAdmin.auth.admin.createUser({
+        email: `${cleanUsername}@ward.local`,
+        password,
+        email_confirm: true,
+      });
 
     if (authError || !authData?.user) {
       return res.status(400).json({
@@ -158,6 +144,7 @@ export default async function handler(req, res) {
 
     const wardUser = authData.user;
 
+    // Create ward.
     const {
       data: ward,
       error: wardError,
@@ -182,15 +169,17 @@ export default async function handler(req, res) {
       });
     }
 
-    const { error: profileError } =
-      await supabaseAdmin
-        .from("profiles")
-        .insert({
-          user_id: wardUser.id,
-          username: cleanUsername,
-          display_name: cleanWardName,
-          role: "ward",
-        });
+    // Create profile.
+    const {
+      error: profileError,
+    } = await supabaseAdmin
+      .from("profiles")
+      .insert({
+        user_id: wardUser.id,
+        username: cleanUsername,
+        display_name: cleanWardName,
+        role: "ward",
+      });
 
     if (profileError) {
       await supabaseAdmin
@@ -207,13 +196,15 @@ export default async function handler(req, res) {
       });
     }
 
-    const { error: memberError } =
-      await supabaseAdmin
-        .from("ward_members")
-        .insert({
-          user_id: wardUser.id,
-          ward_id: ward.id,
-        });
+    // Connect user to exactly one ward.
+    const {
+      error: memberError,
+    } = await supabaseAdmin
+      .from("ward_members")
+      .insert({
+        user_id: wardUser.id,
+        ward_id: ward.id,
+      });
 
     if (memberError) {
       await supabaseAdmin
@@ -235,14 +226,16 @@ export default async function handler(req, res) {
       });
     }
 
-    const { error: rosterError } =
-      await supabaseAdmin
-        .from("ward_rosters")
-        .insert({
-          ward_id: ward.id,
-          roster: {},
-          updated_by: adminUserId || null,
-        });
+    // Create an empty roster.
+    const {
+      error: rosterError,
+    } = await supabaseAdmin
+      .from("ward_rosters")
+      .insert({
+        ward_id: ward.id,
+        roster: {},
+        updated_by: user.id,
+      });
 
     if (rosterError) {
       console.error(
@@ -262,7 +255,10 @@ export default async function handler(req, res) {
       },
     });
   } catch (error) {
-    console.error("Create ward error:", error);
+    console.error(
+      "Create ward error:",
+      error
+    );
 
     return res.status(500).json({
       error:
