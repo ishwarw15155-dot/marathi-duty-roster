@@ -1,19 +1,38 @@
 import { supabaseAdmin } from "./_supabaseAdmin.js";
 
-function getCookie(req, name) {
+function getAccessToken(req) {
   const cookie = req.headers.cookie || "";
 
   const match = cookie.match(
-    new RegExp(
-      "(?:^|;\\s*)" +
-        name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
-        "=([^;]*)"
-    )
+    /(?:^|;\s*)sb_access_token=([^;]+)/
   );
 
   return match
     ? decodeURIComponent(match[1])
     : null;
+}
+
+async function getCurrentUser(req) {
+  const accessToken =
+    getAccessToken(req);
+
+  if (!accessToken) {
+    return null;
+  }
+
+  const {
+    data: { user },
+    error,
+  } =
+    await supabaseAdmin.auth.getUser(
+      accessToken
+    );
+
+  if (error || !user) {
+    return null;
+  }
+
+  return user;
 }
 
 export default async function handler(req, res) {
@@ -24,25 +43,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const accessToken = getCookie(
-      req,
-      "sb_access_token"
-    );
+    const user =
+      await getCurrentUser(req);
 
-    if (!accessToken) {
-      return res.status(401).json({
-        error: "Not authenticated",
-      });
-    }
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseAdmin.auth.getUser(
-      accessToken
-    );
-
-    if (userError || !user) {
+    if (!user) {
       return res.status(401).json({
         error: "Not authenticated",
       });
@@ -51,13 +55,14 @@ export default async function handler(req, res) {
     const {
       data: profile,
       error: profileError,
-    } = await supabaseAdmin
-      .from("profiles")
-      .select(
-        "user_id, username, display_name, role"
-      )
-      .eq("user_id", user.id)
-      .single();
+    } =
+      await supabaseAdmin
+        .from("profiles")
+        .select(
+          "user_id, username, display_name, role"
+        )
+        .eq("user_id", user.id)
+        .single();
 
     if (profileError || !profile) {
       return res.status(403).json({
@@ -66,36 +71,42 @@ export default async function handler(req, res) {
     }
 
     let ward = null;
+    let wardId = null;
 
     if (profile.role === "ward") {
       const {
         data: membership,
         error: membershipError,
-      } = await supabaseAdmin
-        .from("ward_members")
-        .select("ward_id")
-        .eq("user_id", user.id)
-        .single();
+      } =
+        await supabaseAdmin
+          .from("ward_members")
+          .select("ward_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
       if (
         membershipError ||
-        !membership
+        !membership?.ward_id
       ) {
         return res.status(403).json({
-          error: "No ward is assigned to this user",
+          error:
+            "Ward user is not assigned to a ward",
         });
       }
+
+      wardId = membership.ward_id;
 
       const {
         data: wardData,
         error: wardError,
-      } = await supabaseAdmin
-        .from("wards")
-        .select(
-          "id, ward_name, ward_code, username, active"
-        )
-        .eq("id", membership.ward_id)
-        .single();
+      } =
+        await supabaseAdmin
+          .from("wards")
+          .select(
+            "id, ward_name, ward_code, username, active"
+          )
+          .eq("id", wardId)
+          .single();
 
       if (wardError || !wardData) {
         return res.status(403).json({
@@ -103,9 +114,9 @@ export default async function handler(req, res) {
         });
       }
 
-      if (wardData.active === false) {
+      if (!wardData.active) {
         return res.status(403).json({
-          error: "This ward account is inactive",
+          error: "This ward login is inactive",
         });
       }
 
@@ -114,21 +125,32 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
+
       user: {
         id: user.id,
-        username: profile.username,
+
+        username:
+          profile.username,
+
         name:
           profile.display_name ||
           profile.username,
-        role: profile.role,
+
+        role:
+          profile.role,
+
         ward,
+
+        ward_id: wardId,
       },
     });
+
   } catch (error) {
-    console.error("Me API error:", error);
+    console.error(error);
 
     return res.status(500).json({
-      error: "Server error",
+      error:
+        "Server error while checking authentication",
     });
   }
 }
