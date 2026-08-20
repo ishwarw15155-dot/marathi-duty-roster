@@ -1,39 +1,24 @@
 import { supabaseAdmin } from "./_supabaseAdmin.js";
-import { getSecret } from "./_auth.js";
 
-function getSession(req) {
+function getAccessToken(req) {
   const cookie = req.headers.cookie || "";
-  const match = cookie.match(/(?:^|;\s*)duty_auth=([^;]+)/);
 
-  if (!match) return null;
+  const match = cookie.match(
+    /(?:^|;\s*)sb_access_token=([^;]+)/
+  );
 
-  try {
-    const token = decodeURIComponent(match[1]);
-
-    const session = JSON.parse(
-      Buffer.from(token, "base64url").toString("utf8")
-    );
-
-    if (!session || !session.username || !session.role) {
-      return null;
-    }
-
-    if (session.secret !== getSecret()) {
-      return null;
-    }
-
-    return session;
-  } catch {
-    return null;
-  }
+  return match
+    ? decodeURIComponent(match[1])
+    : null;
 }
 
 async function requireAdmin(req) {
-  const session = getSession(req);
+  const token =
+    getAccessToken(req);
 
-  if (!session) {
+  if (!token) {
     return {
-      session: null,
+      user: null,
       error: {
         status: 401,
         message: "Not authenticated",
@@ -41,35 +26,74 @@ async function requireAdmin(req) {
     };
   }
 
-  if (session.role !== "admin") {
+  const {
+    data: { user },
+    error: authError,
+  } =
+    await supabaseAdmin.auth.getUser(
+      token
+    );
+
+  if (authError || !user) {
     return {
-      session: null,
+      user: null,
+      error: {
+        status: 401,
+        message: "Not authenticated",
+      },
+    };
+  }
+
+  const {
+    data: profile,
+    error: profileError,
+  } =
+    await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .single();
+
+  if (
+    profileError ||
+    profile?.role !== "admin"
+  ) {
+    return {
+      user: null,
       error: {
         status: 403,
-        message: "Administrator access required",
+        message:
+          "Administrator access required",
       },
     };
   }
 
   return {
-    session,
+    user,
     error: null,
   };
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST" && req.method !== "PATCH") {
+  if (
+    req.method !== "PATCH" &&
+    req.method !== "POST"
+  ) {
     return res.status(405).json({
       error: "Method not allowed",
     });
   }
 
   try {
-    const auth = await requireAdmin(req);
+    const auth =
+      await requireAdmin(req);
 
     if (auth.error) {
-      return res.status(auth.error.status).json({
-        error: auth.error.message,
+      return res.status(
+        auth.error.status
+      ).json({
+        error:
+          auth.error.message,
       });
     }
 
@@ -88,36 +112,47 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: ward, error: wardFindError } =
+    const {
+      data: ward,
+      error: wardError,
+    } =
       await supabaseAdmin
         .from("wards")
         .select("*")
         .eq("id", wardId)
         .single();
 
-    if (wardFindError || !ward) {
+    if (wardError || !ward) {
       return res.status(404).json({
         error: "Ward not found",
       });
     }
 
     const newUsername =
-      typeof username === "string" && username.trim()
+      typeof username === "string" &&
+      username.trim()
         ? username.trim()
         : ward.username;
 
     const newWardName =
-      typeof wardName === "string" && wardName.trim()
+      typeof wardName === "string" &&
+      wardName.trim()
         ? wardName.trim()
         : ward.ward_name;
 
     const newWardCode =
-      typeof wardCode === "string" && wardCode.trim()
+      typeof wardCode === "string" &&
+      wardCode.trim()
         ? wardCode.trim()
         : null;
 
-    if (newUsername !== ward.username) {
-      const { data: duplicate } =
+    if (
+      newUsername !==
+      ward.username
+    ) {
+      const {
+        data: duplicate,
+      } =
         await supabaseAdmin
           .from("wards")
           .select("id")
@@ -136,19 +171,20 @@ export default async function handler(req, res) {
     const {
       data: updatedWard,
       error: updateError,
-    } = await supabaseAdmin
-      .from("wards")
-      .update({
-        ward_name: newWardName,
-        ward_code: newWardCode,
-        username: newUsername,
-        ...(typeof active === "boolean"
-          ? { active }
-          : {}),
-      })
-      .eq("id", wardId)
-      .select()
-      .single();
+    } =
+      await supabaseAdmin
+        .from("wards")
+        .update({
+          ward_name: newWardName,
+          ward_code: newWardCode,
+          username: newUsername,
+          ...(typeof active === "boolean"
+            ? { active }
+            : {}),
+        })
+        .eq("id", wardId)
+        .select()
+        .single();
 
     if (updateError) {
       return res.status(400).json({
@@ -159,39 +195,51 @@ export default async function handler(req, res) {
     const {
       data: membership,
       error: membershipError,
-    } = await supabaseAdmin
-      .from("ward_members")
-      .select("user_id")
-      .eq("ward_id", wardId)
-      .single();
+    } =
+      await supabaseAdmin
+        .from("ward_members")
+        .select("user_id")
+        .eq("ward_id", wardId)
+        .single();
 
-    if (membershipError || !membership) {
+    if (
+      membershipError ||
+      !membership
+    ) {
       return res.status(500).json({
         error:
           "Ward user account could not be found",
       });
     }
 
-    const wardUserId = membership.user_id;
+    const wardUserId =
+      membership.user_id;
 
-    if (newUsername !== ward.username) {
-      const { error: authUpdateError } =
+    if (
+      newUsername !==
+      ward.username
+    ) {
+      const {
+        error: emailError,
+      } =
         await supabaseAdmin.auth.admin.updateUserById(
           wardUserId,
           {
-            email: `${newUsername}@ward.local`,
+            email:
+              `${newUsername}@ward.local`,
           }
         );
 
-      if (authUpdateError) {
+      if (emailError) {
         return res.status(400).json({
-          error: authUpdateError.message,
+          error: emailError.message,
         });
       }
     }
 
     if (
-      typeof password === "string" &&
+      typeof password ===
+        "string" &&
       password.length > 0
     ) {
       if (password.length < 6) {
@@ -201,7 +249,9 @@ export default async function handler(req, res) {
         });
       }
 
-      const { error: passwordError } =
+      const {
+        error: passwordError,
+      } =
         await supabaseAdmin.auth.admin.updateUserById(
           wardUserId,
           {
@@ -211,7 +261,8 @@ export default async function handler(req, res) {
 
       if (passwordError) {
         return res.status(400).json({
-          error: passwordError.message,
+          error:
+            passwordError.message,
         });
       }
     }
@@ -228,11 +279,16 @@ export default async function handler(req, res) {
       ok: true,
       ward: updatedWard,
     });
+
   } catch (error) {
-    console.error("Update ward error:", error);
+    console.error(
+      "Update ward error:",
+      error
+    );
 
     return res.status(500).json({
-      error: "Server error while updating ward",
+      error:
+        "Server error while updating ward",
     });
   }
 }
