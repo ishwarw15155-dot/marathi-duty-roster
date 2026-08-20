@@ -1056,3 +1056,21 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
     max-width:263px !important;
   }
 }
+
+
+/* Servant PDF: the main table keeps the trailing जमा column, so the summary
+   must keep one matching blank trailing column to preserve exact weekday alignment. */
+.paper-summary-servant .summary-extra {
+  width:40px !important;
+  min-width:40px !important;
+  max-width:40px !important;
+  box-sizing:border-box !important;
+}
+
+@media print {
+  .paper-summary-servant .summary-extra {
+    width:40px !important;
+    min-width:40px !important;
+    max-width:40px !important;
+  }
+}
