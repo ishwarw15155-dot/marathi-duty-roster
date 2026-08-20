@@ -242,7 +242,11 @@ function displayStaffName(employee){
 
 function App({user,onLogout,selectedWardId=null,selectedWardName="",selectedRosterType="regular"}) {
   const userRole=String(user?.role||"").trim().toLowerCase();
-  const rosterType=selectedRosterType==="servant" ? "servant" : "regular";
+  const isWardUser=userRole==="ward";
+  const [wardRosterType,setWardRosterType]=useState("regular");
+  const rosterType=isWardUser
+    ? (wardRosterType==="servant" ? "servant" : "regular")
+    : (selectedRosterType==="servant" ? "servant" : "regular");
   const isServantRoster=rosterType==="servant";
 
   const cloudWardId=
@@ -980,6 +984,24 @@ function App({user,onLogout,selectedWardId=null,selectedWardName="",selectedRost
 
       <div className="top-actions">
         <span className="logged-user">{user?.name||user?.username}</span>
+
+        {isWardUser && (
+          <>
+            <button
+              onClick={()=>setWardRosterType("regular")}
+              className={wardRosterType==="regular" ? "dark-btn" : ""}
+            >
+              Regular Duty List
+            </button>
+
+            <button
+              onClick={()=>setWardRosterType("servant")}
+              className={wardRosterType==="servant" ? "dark-btn" : ""}
+            >
+              Servant Duty List
+            </button>
+          </>
+        )}
 
         <button onClick={onLogout} className="logout-btn">
           <LogOut size={16}/>
