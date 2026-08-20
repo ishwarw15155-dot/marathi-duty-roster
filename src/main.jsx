@@ -240,23 +240,41 @@ function displayStaffName(employee){
   return prefix ? `${prefix} ${clean}` : clean;
 }
 
-function App({user,onLogout}) {
+function App({user,onLogout,selectedWardId=null,selectedWardName=""}) {
+  const userRole=String(user?.role||"").trim().toLowerCase();
+
+  const cloudWardId=
+    selectedWardId ||
+    user?.ward_id ||
+    user?.ward?.id ||
+    null;
+
+  const isCloudRoster=
+    userRole==="ward" ||
+    !!selectedWardId;
+
   const [roster,setRoster]=useState(()=>{
-    // Ward users must start from a clean local state.
-    // Their actual roster is loaded from the cloud using their ward ID.
-    if(user?.role === "ward"){
+    if(isCloudRoster){
       return blankRoster();
     }
 
-    // Administrator can still use the existing browser-local roster.
-    try {
-      const raw=localStorage.getItem("marathi-duty-roster-v7")
-        || localStorage.getItem("marathi-duty-roster-v6") || localStorage.getItem("marathi-duty-roster-v5");
-      return raw ? normalizeRoster(JSON.parse(raw)) : blankRoster();
-    } catch {
+    try{
+      const raw=
+        localStorage.getItem("marathi-duty-roster-v7") ||
+        localStorage.getItem("marathi-duty-roster-v6") ||
+        localStorage.getItem("marathi-duty-roster-v5");
+
+      return raw
+        ? normalizeRoster(JSON.parse(raw))
+        : blankRoster();
+
+    }catch{
       return blankRoster();
     }
   });
+
+  const [cloudLoading,setCloudLoading]=useState(isCloudRoster);
+  const [cloudError,setCloudError]=useState("");
 
   const [tab,setTab]=useState("editor");
   const [savedMessage,setSavedMessage]=useState(false);
@@ -270,8 +288,77 @@ function App({user,onLogout}) {
   const [showFontSettings,setShowFontSettings]=useState(false);
 
   useEffect(()=>{
-    localStorage.setItem("marathi-duty-roster-v7",JSON.stringify(roster));
-  },[roster]);
+    if(!isCloudRoster || !cloudWardId){
+      setCloudLoading(false);
+      return;
+    }
+
+    let cancelled=false;
+
+    const loadCloudRoster=async()=>{
+      setCloudLoading(true);
+      setCloudError("");
+
+      try{
+        const res=await fetch(
+          `/api/ward-roster?wardId=${encodeURIComponent(cloudWardId)}`,
+          {
+            method:"GET",
+            credentials:"include"
+          }
+        );
+
+        const data=await res.json().catch(()=>({}));
+
+        if(!res.ok){
+          throw new Error(
+            data.error||"Unable to load ward roster."
+          );
+        }
+
+        if(cancelled){
+          return;
+        }
+
+        const loaded=
+          data?.roster &&
+          typeof data.roster==="object"
+            ? data.roster
+            : {};
+
+        setRoster(
+          normalizeRoster(loaded)
+        );
+
+      }catch(error){
+        if(!cancelled){
+          setCloudError(
+            error.message||
+            "Unable to load ward roster."
+          );
+        }
+      }finally{
+        if(!cancelled){
+          setCloudLoading(false);
+        }
+      }
+    };
+
+    loadCloudRoster();
+
+    return()=>{
+      cancelled=true;
+    };
+  },[isCloudRoster,cloudWardId]);
+
+  useEffect(()=>{
+    if(!isCloudRoster){
+      localStorage.setItem(
+        "marathi-duty-roster-v7",
+        JSON.stringify(roster)
+      );
+    }
+  },[roster,isCloudRoster]);
 
   const dayLabels=useMemo(()=>makeDateLabels(roster.from),[roster.from]);
 
@@ -644,12 +731,60 @@ function App({user,onLogout}) {
     setTab("editor");
   };
 
-  const save=()=>{
-    const next={...roster,savedAt:new Date().toISOString()};
+  const save=async()=>{
+    const next={
+      ...roster,
+      savedAt:new Date().toISOString()
+    };
+
     setRoster(next);
-    localStorage.setItem("marathi-duty-roster-v7",JSON.stringify(next));
+
+    if(isCloudRoster && cloudWardId){
+      try{
+        setCloudError("");
+
+        const res=await fetch(
+          "/api/ward-roster",
+          {
+            method:"POST",
+            credentials:"include",
+            headers:{
+              "Content-Type":"application/json"
+            },
+            body:JSON.stringify({
+              wardId:cloudWardId,
+              roster:next
+            })
+          }
+        );
+
+        const data=await res.json().catch(()=>({}));
+
+        if(!res.ok){
+          throw new Error(
+            data.error||
+            "Unable to save ward roster."
+          );
+        }
+
+      }catch(error){
+        setCloudError(
+          error.message||
+          "Unable to save ward roster."
+        );
+        return;
+      }
+    }else{
+      localStorage.setItem(
+        "marathi-duty-roster-v7",
+        JSON.stringify(next)
+      );
+    }
+
     setSavedMessage(true);
-    setTimeout(()=>setSavedMessage(false),1800);
+    setTimeout(()=>{
+      setSavedMessage(false);
+    },1800);
   };
 
   const newRoster=()=>{
@@ -761,6 +896,50 @@ function App({user,onLogout}) {
     }
   };
 
+  if(cloudLoading){
+    return (
+      <div
+        className="login-loading"
+        style={{minHeight:"100vh"}}
+      >
+        Loading ward roster...
+      </div>
+    );
+  }
+
+  if(cloudError){
+    return (
+      <div
+        className="login-screen"
+        style={{minHeight:"100vh"}}
+      >
+        <div className="login-card">
+          <h2>Ward Roster Error</h2>
+
+          <p style={{
+            color:"#b42318",
+            marginBottom:16
+          }}>
+            {cloudError}
+          </p>
+
+          {selectedWardId&&(
+            <button
+              className="dark-btn"
+              onClick={()=>{
+                sessionStorage.removeItem("admin_selected_ward_id");
+                sessionStorage.removeItem("admin_selected_ward_name");
+                window.location.href="/";
+              }}
+            >
+              Back to Ward Manager
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return <div className="app" style={{"--marathi-font":fontStack(roster.fontFamily),"--ui-scale":(roster.globalFontSize||16)/16,"--ui-inverse-scale":16/(roster.globalFontSize||16)}}>
 
     <header className="topbar">
@@ -778,6 +957,19 @@ function App({user,onLogout}) {
           <LogOut size={16}/>
           Logout
         </button>
+
+        {selectedWardId&&(
+          <button
+            onClick={()=>{
+              sessionStorage.removeItem("admin_selected_ward_id");
+              sessionStorage.removeItem("admin_selected_ward_name");
+              window.location.href="/";
+            }}
+          >
+            <FolderOpen size={16}/>
+            Back to Ward Manager
+          </button>
+        )}
 
         <button onClick={()=>setShowFontSettings(true)}>
           <Settings2 size={16}/>
@@ -1534,25 +1726,55 @@ function AdminDashboard({user,onLogout}){
   const loadWards=async()=>{
     setLoading(true);
     setError("");
+
     try{
-      const res=await fetch("/api/list-wards",{credentials:"include"});
+      const res=await fetch("/api/list-wards",{
+        method:"GET",
+        credentials:"include"
+      });
+
       const data=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(data.error||"Unable to load wards.");
-      const list=Array.isArray(data) ? data : (data.wards || data.data || []);
+
+      if(!res.ok){
+        throw new Error(
+          data.error||"Unable to load wards."
+        );
+      }
+
+      const list=Array.isArray(data)
+        ? data
+        : Array.isArray(data.wards)
+          ? data.wards
+          : Array.isArray(data.data)
+            ? data.data
+            : [];
+
       setWards(list);
+
     }catch(err){
-      setError(err.message||"Unable to load wards.");
+      setError(
+        err.message||"Unable to load wards."
+      );
     }finally{
       setLoading(false);
     }
   };
 
-  useEffect(()=>{ loadWards(); },[]);
+  useEffect(()=>{
+    loadWards();
+  },[]);
 
   const createWard=async e=>{
     e.preventDefault();
-    if(!form.name.trim() || !form.username.trim() || !form.password){
-      setError("Ward name, username and password are required.");
+
+    if(
+      !form.name.trim() ||
+      !form.username.trim() ||
+      !form.password
+    ){
+      setError(
+        "Ward name, username and password are required."
+      );
       return;
     }
 
@@ -1562,244 +1784,454 @@ function AdminDashboard({user,onLogout}){
     try{
       const res=await fetch("/api/create-ward",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
         credentials:"include",
+        headers:{
+          "Content-Type":"application/json"
+        },
         body:JSON.stringify({
-          name:form.name.trim(),
-          ward:form.name.trim(),
+          wardName:form.name.trim(),
+          wardCode:"",
           username:form.username.trim(),
           password:form.password
         })
       });
 
       const data=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(data.error||"Unable to create ward.");
 
-      setForm({name:"",username:"",password:""});
+      if(!res.ok){
+        throw new Error(
+          data.error||"Unable to create ward."
+        );
+      }
+
+      setForm({
+        name:"",
+        username:"",
+        password:""
+      });
+
       setShowCreate(false);
+
       await loadWards();
+
     }catch(err){
-      setError(err.message||"Unable to create ward.");
+      setError(
+        err.message||"Unable to create ward."
+      );
     }finally{
       setBusy(false);
     }
   };
 
   const deleteWard=async ward=>{
-    const id=ward.id || ward.user_id || ward.ward_id;
-    if(!id) return;
+    const wardId=
+      ward?.id||
+      ward?.ward_id||
+      null;
 
-    if(!window.confirm(`Delete ${ward.name || ward.ward || "this ward"}?`)) return;
+    if(!wardId){
+      setError("Ward ID is missing.");
+      return;
+    }
+
+    const name=
+      ward?.ward_name||
+      ward?.name||
+      ward?.ward||
+      "this ward";
+
+    if(
+      !window.confirm(
+        `Delete ${name}? This will remove the ward account and roster.`
+      )
+    ){
+      return;
+    }
+
+    setError("");
 
     try{
       const res=await fetch("/api/delete-ward",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
+        method:"DELETE",
         credentials:"include",
+        headers:{
+          "Content-Type":"application/json"
+        },
         body:JSON.stringify({
-          id,
-          user_id:ward.user_id || id,
-          ward_id:ward.ward_id || id
+          wardId
         })
       });
 
       const data=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(data.error||"Unable to delete ward.");
+
+      if(!res.ok){
+        throw new Error(
+          data.error||"Unable to delete ward."
+        );
+      }
+
       await loadWards();
+
     }catch(err){
-      setError(err.message||"Unable to delete ward.");
+      setError(
+        err.message||"Unable to delete ward."
+      );
     }
   };
 
   const toggleWard=async ward=>{
-    const id=ward.id || ward.user_id || ward.ward_id;
-    if(!id) return;
+    const wardId=
+      ward?.id||
+      ward?.ward_id||
+      null;
+
+    if(!wardId){
+      setError("Ward ID is missing.");
+      return;
+    }
 
     const active =
-      typeof ward.active==="boolean" ? ward.active :
-      typeof ward.is_active==="boolean" ? ward.is_active :
-      true;
+      typeof ward?.active==="boolean"
+        ? ward.active
+        : typeof ward?.is_active==="boolean"
+          ? ward.is_active
+          : true;
+
+    setError("");
 
     try{
       const res=await fetch("/api/update-ward",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
+        method:"PATCH",
         credentials:"include",
+        headers:{
+          "Content-Type":"application/json"
+        },
         body:JSON.stringify({
-          id,
-          user_id:ward.user_id || id,
-          ward_id:ward.ward_id || id,
-          active:!active,
-          is_active:!active
+          wardId,
+          wardName:
+            ward?.ward_name||
+            ward?.name||
+            ward?.ward||
+            "",
+          wardCode:
+            ward?.ward_code||
+            "",
+          username:
+            ward?.username||
+            "",
+          active:!active
         })
       });
 
       const data=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(data.error||"Unable to update ward.");
+
+      if(!res.ok){
+        throw new Error(
+          data.error||"Unable to update ward."
+        );
+      }
+
       await loadWards();
+
     }catch(err){
-      setError(err.message||"Unable to update ward.");
+      setError(
+        err.message||"Unable to update ward."
+      );
     }
   };
 
   const openWard=ward=>{
-    const wardId=ward.id || ward.ward_id || ward.user_id;
-    if(!wardId) return;
+    const wardId=
+      ward?.id||
+      ward?.ward_id||
+      null;
 
-    /*
-     * Keep the selected ward for the administrator.
-     * The roster editor can use this value when the
-     * ward-specific cloud roster is opened.
-     */
-    sessionStorage.setItem("admin_selected_ward_id",String(wardId));
+    if(!wardId){
+      setError("Ward ID is missing.");
+      return;
+    }
+
     sessionStorage.setItem(
-      "admin_selected_ward_name",
-      String(ward.name || ward.ward || ward.ward_name || "")
+      "admin_selected_ward_id",
+      String(wardId)
     );
 
-    window.location.href=`/?ward=${encodeURIComponent(wardId)}`;
+    sessionStorage.setItem(
+      "admin_selected_ward_name",
+      String(
+        ward?.ward_name||
+        ward?.name||
+        ward?.ward||
+        ""
+      )
+    );
+
+    window.location.href=
+      `/?ward=${encodeURIComponent(wardId)}`;
   };
 
   return (
-    <div className="app" style={{minHeight:"100vh",background:"#f5f7fa"}}>
+    <div
+      className="app"
+      style={{
+        minHeight:"100vh",
+        background:"#f5f7fa"
+      }}
+    >
       <header className="topbar">
         <div>
-          <div className="brand">Duty Roster</div>
-          <div className="brand-sub">Administrator / Ward Manager</div>
+          <div className="brand">
+            Duty Roster
+          </div>
+
+          <div className="brand-sub">
+            Administrator / Ward Manager
+          </div>
         </div>
 
         <div className="top-actions">
           <span className="logged-user">
-            {user?.name || user?.username || "Administrator"}
+            {user?.name||
+             user?.username||
+             "Administrator"}
           </span>
 
-          <button onClick={onLogout} className="logout-btn">
+          <button
+            onClick={onLogout}
+            className="logout-btn"
+          >
             <LogOut size={16}/>
             Logout
           </button>
         </div>
       </header>
 
-      <main style={{
-        maxWidth:1100,
-        margin:"0 auto",
-        padding:"28px 18px"
-      }}>
-        <div style={{
-          background:"#fff",
-          borderRadius:16,
-          padding:24,
-          boxShadow:"0 8px 30px rgba(0,0,0,.08)"
-        }}>
-          <div style={{
-            display:"flex",
-            justifyContent:"space-between",
-            alignItems:"center",
-            gap:16,
-            flexWrap:"wrap",
-            marginBottom:20
-          }}>
+      <main
+        style={{
+          maxWidth:1100,
+          margin:"0 auto",
+          padding:"28px 18px"
+        }}
+      >
+        <div
+          style={{
+            background:"#fff",
+            borderRadius:16,
+            padding:24,
+            boxShadow:"0 8px 30px rgba(0,0,0,.08)"
+          }}
+        >
+          <div
+            style={{
+              display:"flex",
+              justifyContent:"space-between",
+              alignItems:"center",
+              gap:16,
+              flexWrap:"wrap",
+              marginBottom:20
+            }}
+          >
             <div>
-              <h1 style={{margin:"0 0 6px"}}>Administrator / Ward Manager</h1>
-              <p style={{margin:0,color:"#667085"}}>
+              <h1
+                style={{
+                  margin:"0 0 6px"
+                }}
+              >
+                Administrator / Ward Manager
+              </h1>
+
+              <p
+                style={{
+                  margin:0,
+                  color:"#667085"
+                }}
+              >
                 सर्व तयार केलेले wards येथे manage करा.
               </p>
             </div>
 
             <button
               className="dark-btn"
-              onClick={()=>setShowCreate(true)}
+              onClick={()=>{
+                setError("");
+                setShowCreate(true);
+              }}
             >
               <Plus size={16}/>
               Create New Ward
             </button>
           </div>
 
-          {error && (
-            <div style={{
-              padding:12,
-              marginBottom:16,
-              borderRadius:8,
-              background:"#fff1f2",
-              color:"#b42318"
-            }}>
+          {error&&(
+            <div
+              style={{
+                padding:12,
+                marginBottom:16,
+                borderRadius:8,
+                background:"#fff1f2",
+                color:"#b42318"
+              }}
+            >
               {error}
             </div>
           )}
 
-          {loading ? (
-            <div style={{padding:30,textAlign:"center"}}>
+          {loading?(
+            <div
+              style={{
+                padding:30,
+                textAlign:"center"
+              }}
+            >
               Loading wards...
             </div>
-          ) : (
+          ):(
             <>
-              <h2 style={{fontSize:18,marginBottom:12}}>
-                Created Wards <span style={{fontWeight:400,color:"#667085"}}>{wards.length} wards</span>
+              <h2
+                style={{
+                  fontSize:18,
+                  marginBottom:12
+                }}
+              >
+                Created Wards{" "}
+                <span
+                  style={{
+                    fontWeight:400,
+                    color:"#667085"
+                  }}
+                >
+                  {wards.length} wards
+                </span>
               </h2>
 
-              {wards.length===0 ? (
-                <div style={{
-                  padding:30,
-                  textAlign:"center",
-                  border:"1px dashed #d0d5dd",
-                  borderRadius:12,
-                  color:"#667085"
-                }}>
-                  <b>No wards created yet.</b>
-                  <div style={{marginTop:6}}>
+              {wards.length===0?(
+                <div
+                  style={{
+                    padding:30,
+                    textAlign:"center",
+                    border:"1px dashed #d0d5dd",
+                    borderRadius:12,
+                    color:"#667085"
+                  }}
+                >
+                  <b>
+                    No wards created yet.
+                  </b>
+
+                  <div
+                    style={{
+                      marginTop:6
+                    }}
+                  >
                     Create your first ward to start using the roster.
                   </div>
                 </div>
-              ) : (
-                <div style={{
-                  display:"grid",
-                  gap:10
-                }}>
+              ):(
+                <div
+                  style={{
+                    display:"grid",
+                    gap:10
+                  }}
+                >
                   {wards.map((ward,index)=>{
-                    const id=ward.id || ward.ward_id || ward.user_id || index;
-                    const name=ward.name || ward.ward || ward.ward_name || `Ward ${index+1}`;
-                    const username=ward.username || ward.email || "";
-                    const active =
-                      typeof ward.active==="boolean" ? ward.active :
-                      typeof ward.is_active==="boolean" ? ward.is_active :
-                      true;
+                    const id=
+                      ward.id||
+                      ward.ward_id||
+                      `ward-${index}`;
+
+                    const name=
+                      ward.ward_name||
+                      ward.name||
+                      ward.ward||
+                      `Ward ${index+1}`;
+
+                    const username=
+                      ward.username||
+                      ward.email||
+                      "";
+
+                    const active=
+                      typeof ward.active==="boolean"
+                        ? ward.active
+                        : typeof ward.is_active==="boolean"
+                          ? ward.is_active
+                          : true;
 
                     return (
-                      <div key={id} style={{
-                        display:"flex",
-                        alignItems:"center",
-                        justifyContent:"space-between",
-                        gap:12,
-                        flexWrap:"wrap",
-                        padding:16,
-                        border:"1px solid #e4e7ec",
-                        borderRadius:12
-                      }}>
+                      <div
+                        key={id}
+                        style={{
+                          display:"flex",
+                          alignItems:"center",
+                          justifyContent:"space-between",
+                          gap:12,
+                          flexWrap:"wrap",
+                          padding:16,
+                          border:"1px solid #e4e7ec",
+                          borderRadius:12
+                        }}
+                      >
                         <div>
                           <b>{name}</b>
-                          {username && (
-                            <div style={{fontSize:13,color:"#667085",marginTop:3}}>
+
+                          {username&&(
+                            <div
+                              style={{
+                                fontSize:13,
+                                color:"#667085",
+                                marginTop:3
+                              }}
+                            >
                               Username: {username}
                             </div>
                           )}
+
+                          <div
+                            style={{
+                              fontSize:12,
+                              marginTop:4,
+                              color:
+                                active
+                                  ? "#027a48"
+                                  : "#b42318"
+                            }}
+                          >
+                            {active
+                              ? "Active"
+                              : "Inactive"}
+                          </div>
                         </div>
 
-                        <div style={{
-                          display:"flex",
-                          gap:8,
-                          flexWrap:"wrap"
-                        }}>
-                          <button onClick={()=>openWard(ward)}>
+                        <div
+                          style={{
+                            display:"flex",
+                            gap:8,
+                            flexWrap:"wrap"
+                          }}
+                        >
+                          <button
+                            onClick={()=>
+                              openWard(ward)
+                            }
+                          >
                             Open Roster
                           </button>
 
-                          <button onClick={()=>toggleWard(ward)}>
-                            {active ? "Deactivate" : "Activate"}
+                          <button
+                            onClick={()=>
+                              toggleWard(ward)
+                            }
+                          >
+                            {active
+                              ? "Deactivate"
+                              : "Activate"}
                           </button>
 
                           <button
                             className="delete-btn"
-                            onClick={()=>deleteWard(ward)}
+                            onClick={()=>
+                              deleteWard(ward)
+                            }
                           >
                             <Trash2 size={15}/>
                             Delete
@@ -1815,7 +2247,7 @@ function AdminDashboard({user,onLogout}){
         </div>
       </main>
 
-      {showCreate && (
+      {showCreate&&(
         <div className="modal-backdrop">
           <form
             className="ward-modal"
@@ -1823,12 +2255,22 @@ function AdminDashboard({user,onLogout}){
           >
             <div className="modal-head">
               <div>
-                <h2>Create New Ward</h2>
-                <p>Create one login for this ward.</p>
+                <h2>
+                  Create New Ward
+                </h2>
+
+                <p>
+                  Create one login for this ward.
+                </p>
               </div>
+
               <button
                 type="button"
-                onClick={()=>setShowCreate(false)}
+                onClick={()=>{
+                  if(!busy){
+                    setShowCreate(false);
+                  }
+                }}
               >
                 <X size={18}/>
               </button>
@@ -1836,20 +2278,36 @@ function AdminDashboard({user,onLogout}){
 
             <div className="ward-modal-body">
               <label>
-                <span>Ward Name</span>
+                <span>
+                  Ward Name
+                </span>
+
                 <input
                   value={form.name}
-                  onChange={e=>setForm(f=>({...f,name:e.target.value}))}
+                  onChange={e=>
+                    setForm(f=>({
+                      ...f,
+                      name:e.target.value
+                    }))
+                  }
                   placeholder="Ward 26"
                   required
                 />
               </label>
 
               <label>
-                <span>Username</span>
+                <span>
+                  Username
+                </span>
+
                 <input
                   value={form.username}
-                  onChange={e=>setForm(f=>({...f,username:e.target.value}))}
+                  onChange={e=>
+                    setForm(f=>({
+                      ...f,
+                      username:e.target.value
+                    }))
+                  }
                   placeholder="ward26"
                   autoComplete="off"
                   required
@@ -1857,13 +2315,22 @@ function AdminDashboard({user,onLogout}){
               </label>
 
               <label>
-                <span>Password</span>
+                <span>
+                  Password
+                </span>
+
                 <input
                   type="password"
                   value={form.password}
-                  onChange={e=>setForm(f=>({...f,password:e.target.value}))}
+                  onChange={e=>
+                    setForm(f=>({
+                      ...f,
+                      password:e.target.value
+                    }))
+                  }
                   placeholder="Create password"
                   autoComplete="new-password"
+                  minLength={6}
                   required
                 />
               </label>
@@ -1872,7 +2339,11 @@ function AdminDashboard({user,onLogout}){
             <div className="modal-foot">
               <button
                 type="button"
-                onClick={()=>setShowCreate(false)}
+                onClick={()=>{
+                  if(!busy){
+                    setShowCreate(false);
+                  }
+                }}
               >
                 Cancel
               </button>
@@ -1882,7 +2353,9 @@ function AdminDashboard({user,onLogout}){
                 className="dark-btn"
                 disabled={busy}
               >
-                {busy ? "Creating..." : "Create Ward"}
+                {busy
+                  ? "Creating..."
+                  : "Create Ward"}
               </button>
             </div>
           </form>
@@ -1896,11 +2369,56 @@ function AppShell(){
   const [auth,setAuth]=useState(null);
   const [checking,setChecking]=useState(true);
 
+  const [selectedWardId,setSelectedWardId]=useState(()=>{
+    try{
+      const params=new URLSearchParams(
+        window.location.search
+      );
+
+      return (
+        params.get("ward") ||
+        sessionStorage.getItem(
+          "admin_selected_ward_id"
+        ) ||
+        null
+      );
+    }catch{
+      return null;
+    }
+  });
+
+  const [selectedWardName,setSelectedWardName]=useState(()=>{
+    try{
+      return (
+        sessionStorage.getItem(
+          "admin_selected_ward_name"
+        ) || ""
+      );
+    }catch{
+      return "";
+    }
+  });
+
   const loadAuth=async()=>{
     try{
-      const response=await fetch("/api/me",{credentials:"include"});
-      const data=await response.json().catch(()=>null);
-      setAuth(response.ok ? (data?.user || null) : null);
+      const response=await fetch(
+        "/api/me",
+        {
+          credentials:"include"
+        }
+      );
+
+      const data=
+        await response
+          .json()
+          .catch(()=>null);
+
+      setAuth(
+        response.ok
+          ? (data?.user||null)
+          : null
+      );
+
     }catch{
       setAuth(null);
     }finally{
@@ -1913,31 +2431,102 @@ function AppShell(){
   },[]);
 
   const logout=async()=>{
-    await fetch("/api/logout",{
-      method:"POST",
-      credentials:"include"
-    }).catch(()=>{});
+    await fetch(
+      "/api/logout",
+      {
+        method:"POST",
+        credentials:"include"
+      }
+    ).catch(()=>{});
+
+    sessionStorage.removeItem(
+      "admin_selected_ward_id"
+    );
+
+    sessionStorage.removeItem(
+      "admin_selected_ward_name"
+    );
+
+    setSelectedWardId(null);
+    setSelectedWardName("");
     setAuth(null);
   };
 
+  const backToAdmin=()=>{
+    sessionStorage.removeItem(
+      "admin_selected_ward_id"
+    );
+
+    sessionStorage.removeItem(
+      "admin_selected_ward_name"
+    );
+
+    setSelectedWardId(null);
+    setSelectedWardName("");
+
+    window.history.replaceState(
+      {},
+      "",
+      "/"
+    );
+  };
+
   if(checking){
-    return <div className="login-loading">Loading Duty Roster...</div>;
+    return (
+      <div className="login-loading">
+        Loading Duty Roster...
+      </div>
+    );
   }
 
   if(!auth){
-    return <LoginScreen onLogin={user=>{
-      setAuth(user);
-      setChecking(false);
-    }}/>;
+    return (
+      <LoginScreen
+        onLogin={user=>{
+          setAuth(user);
+          setChecking(false);
+        }}
+      />
+    );
   }
 
-  const role=String(auth.role||"").trim().toLowerCase();
+  const role=
+    String(auth.role||"")
+      .trim()
+      .toLowerCase();
 
-  if(role==="admin" || role==="administrator"){
-    return <AdminDashboard user={auth} onLogout={logout}/>;
+  if(
+    (role==="admin"||role==="administrator") &&
+    selectedWardId
+  ){
+    return (
+      <App
+        user={auth}
+        onLogout={logout}
+        selectedWardId={selectedWardId}
+        selectedWardName={selectedWardName}
+      />
+    );
   }
 
-  return <App user={auth} onLogout={logout}/>;
+  if(
+    role==="admin"||
+    role==="administrator"
+  ){
+    return (
+      <AdminDashboard
+        user={auth}
+        onLogout={logout}
+      />
+    );
+  }
+
+  return (
+    <App
+      user={auth}
+      onLogout={logout}
+    />
+  );
 }
 
 function SizeControl({value,onChange,min=7,max=40,small=false}) {
