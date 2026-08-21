@@ -3549,6 +3549,11 @@ function WeeklyHistoryModal({onClose,onLoad,onDelete}) {
   );
 }
 
+function shouldCountInSummary(employee){
+  const group=String(employee?.group||"").trim().toLowerCase();
+  return !["परिसेवक","incharge","in-charge"].includes(group);
+}
+
 const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterType="regular"},ref){
 
   const isServantRoster=rosterType==="servant";
@@ -3572,6 +3577,8 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
   const dailyLeaveCounts=Array(7).fill(0);
 
   roster.employees.forEach(e=>{
+    if(!shouldCountInSummary(e)) return;
+
     // EL/ML date range contributes to the Leave summary,
     // but NEVER overwrites the employee's selected daily duty.
     e.duties.forEach((key,dayIndex)=>{
@@ -3720,8 +3727,9 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                 key={i}
                 className="p-day"
                 style={{
-                  fontFamily:fontStack(roster.fontFamily),
-                  fontWeight:400
+                  fontFamily:"inherit",
+                  fontWeight:400,
+                  fontStyle:"normal"
                 }}
               >
                 {d.short}
