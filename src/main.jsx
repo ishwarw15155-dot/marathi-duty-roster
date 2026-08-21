@@ -105,6 +105,7 @@ function blankRoster() {
     },
     pdfTypography:{
       header:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      rollNumber:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
       date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
       dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
       extraValue:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
@@ -168,6 +169,10 @@ function normalizeRoster(data={}) {
     header:{
       ...base.pdfTypography.header,
       ...(data.pdfTypography?.header||{})
+    },
+    rollNumber:{
+      ...base.pdfTypography.rollNumber,
+      ...(data.pdfTypography?.rollNumber||{})
     },
     date:{
       ...base.pdfTypography.date,
@@ -1854,9 +1859,10 @@ function FontSettingsModal({value,onChange,onClose,pdfTypography,onTypographyCha
           अ क्र, रोल नं, नावे, सोम–रवि, नैर, जमा, रुजू या पूर्ण header row साठी एकच Font आणि Weight निवडा.
           Day name वर हीच setting लागू होईल; खालील date साठी Date setting स्वतंत्र आहे.
         </div>
-        {["header","date","dutyCode","extraValue","summaryLabel","summaryCount","staffName"].map(key=>{
+        {["header","rollNumber","date","dutyCode","extraValue","summaryLabel","summaryCount","staffName"].map(key=>{
           const labels={
             header:"Header Row — अ क्र / रोल नं / नावे / सोम–रवि / नैर / जमा / रुजू",
+            rollNumber:"रोल नं Values",
             date:"Dates — 24/08, 25/08...",
             dutyCode:"Duty Codes — M / E / PH / SS / DO",
             extraValue:"रुजू / नैर / जमा Values",
@@ -4034,7 +4040,17 @@ function PrintableRow({employee,index,duties,from,rosterType="regular",pdfTypogr
 
       <td className="print-sr-cell">{index+1}</td>
 
-      {!isServantRoster && <td className="print-roll-cell">{employee.rollNo}</td>}
+      {!isServantRoster && (
+        <td
+          className="print-roll-cell"
+          style={{
+            fontFamily:fontStack(pdfTypography?.rollNumber?.fontFamily||"Tiro Devanagari Marathi"),
+            fontWeight:pdfTypography?.rollNumber?.fontWeight||400
+          }}
+        >
+          {employee.rollNo}
+        </td>
+      )}
 
       <td
         className="print-name"
