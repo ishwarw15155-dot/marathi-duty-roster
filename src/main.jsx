@@ -1898,6 +1898,8 @@ function AdminDashboard({user,onLogout}){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [showCreate,setShowCreate]=useState(false);
+  const [showEdit,setShowEdit]=useState(false);
+  const [editWard,setEditWard]=useState(null);
   const [busy,setBusy]=useState(false);
   const [form,setForm]=useState({
     name:"",
@@ -2119,6 +2121,63 @@ function AdminDashboard({user,onLogout}){
       setError(
         err.message||"Unable to update ward."
       );
+    }
+  };
+
+  const openEditWard=ward=>{
+    setError("");
+    setEditWard({
+      id:ward?.id||ward?.ward_id||null,
+      wardName:ward?.ward_name||ward?.name||ward?.ward||"",
+      username:ward?.username||ward?.email||"",
+      password:"",
+      wardCode:ward?.ward_code||"",
+      active:typeof ward?.active==="boolean" ? ward.active : true
+    });
+    setShowEdit(true);
+  };
+
+  const updateWard=async e=>{
+    e.preventDefault();
+    if(!editWard?.id){
+      setError("Ward ID is missing.");
+      return;
+    }
+    if(!editWard.wardName.trim() || !editWard.username.trim()){
+      setError("Ward name and username are required.");
+      return;
+    }
+    if(editWard.password && editWard.password.length<6){
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try{
+      const res=await fetch("/api/update-ward",{
+        method:"PATCH",
+        credentials:"include",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          wardId:editWard.id,
+          wardName:editWard.wardName.trim(),
+          wardCode:editWard.wardCode||"",
+          username:editWard.username.trim(),
+          password:editWard.password||"",
+          active:!!editWard.active
+        })
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok){
+        throw new Error(data.error||"Unable to update ward.");
+      }
+      setShowEdit(false);
+      setEditWard(null);
+      await loadWards();
+    }catch(err){
+      setError(err.message||"Unable to update ward.");
+    }finally{
+      setBusy(false);
     }
   };
 
@@ -2390,6 +2449,12 @@ function AdminDashboard({user,onLogout}){
                           </button>
 
                           <button
+                            onClick={()=>openEditWard(ward)}
+                          >
+                            Edit / Change Password
+                          </button>
+
+                          <button
                             onClick={()=>
                               toggleWard(ward)
                             }
@@ -2418,6 +2483,90 @@ function AdminDashboard({user,onLogout}){
           )}
         </div>
       </main>
+
+      {showEdit&&editWard&&(
+        <div className="modal-backdrop">
+          <form className="ward-modal" onSubmit={updateWard}>
+            <div className="modal-head">
+              <div>
+                <h2>Edit Ward / Change Password</h2>
+                <p>Update the ward login details. Leave password blank to keep the current password.</p>
+              </div>
+              <button
+                type="button"
+                onClick={()=>{
+                  if(!busy){
+                    setShowEdit(false);
+                    setEditWard(null);
+                  }
+                }}
+              >
+                <X size={18}/>
+              </button>
+            </div>
+
+            <div className="ward-modal-body">
+              <label>
+                <span>Ward Name</span>
+                <input
+                  value={editWard.wardName}
+                  onChange={e=>setEditWard(v=>({...v,wardName:e.target.value}))}
+                  required
+                />
+              </label>
+
+              <label>
+                <span>Username</span>
+                <input
+                  value={editWard.username}
+                  onChange={e=>setEditWard(v=>({...v,username:e.target.value}))}
+                  autoComplete="off"
+                  required
+                />
+              </label>
+
+              <label>
+                <span>New Password (optional)</span>
+                <input
+                  type="password"
+                  value={editWard.password}
+                  onChange={e=>setEditWard(v=>({...v,password:e.target.value}))}
+                  placeholder="Leave blank to keep current password"
+                  autoComplete="new-password"
+                  minLength={6}
+                />
+              </label>
+
+              <label>
+                <span>Status</span>
+                <select
+                  value={editWard.active ? "active" : "inactive"}
+                  onChange={e=>setEditWard(v=>({...v,active:e.target.value==="active"}))}
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="modal-foot">
+              <button
+                type="button"
+                onClick={()=>{
+                  if(!busy){
+                    setShowEdit(false);
+                    setEditWard(null);
+                  }
+                }}
+              >Cancel</button>
+
+              <button type="submit" className="dark-btn" disabled={busy}>
+                {busy ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {showCreate&&(
         <div className="modal-backdrop">
@@ -3567,9 +3716,21 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
             <th className="p-name">नावे</th>
 
             {labels.map((d,i)=>
-              <th key={i} className="p-day">
+              <th
+                key={i}
+                className="p-day"
+                style={{
+                  fontFamily:fontStack(typography.date.fontFamily),
+                  fontWeight:typography.date.fontWeight
+                }}
+              >
                 {d.short}
-                <small>{d.date}</small>
+                <small
+                  style={{
+                    fontFamily:fontStack(typography.date.fontFamily),
+                    fontWeight:typography.date.fontWeight
+                  }}
+                >{d.date}</small>
               </th>
             )}
             {!isServantRoster && <th className="p-extra">नैर</th>}
@@ -3629,9 +3790,21 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
             </th>
 
             {labels.map((d,i)=>
-              <th key={i} className="summary-day">
+              <th
+                key={i}
+                className="summary-day"
+                style={{
+                  fontFamily:fontStack(typography.date.fontFamily),
+                  fontWeight:typography.date.fontWeight
+                }}
+              >
                 {d.short}
-                <small>{d.date}</small>
+                <small
+                  style={{
+                    fontFamily:fontStack(typography.date.fontFamily),
+                    fontWeight:typography.date.fontWeight
+                  }}
+                >{d.date}</small>
               </th>
             )}
             {/* Match the main roster's trailing columns exactly.
