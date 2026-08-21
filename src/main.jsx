@@ -87,7 +87,6 @@ function blankRoster() {
       staffName:16,
       dutyCode:12,
       extraValue:10.5,
-      nairValue:10.5,
       summaryLabel:10.5,
         summaryCount:11,
       summaryAbbr:8
@@ -3709,6 +3708,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
     date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.date||{})},
     dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.dutyCode||{})},
     extraValue:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.extraValue||{})},
+    summaryLabel:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.summaryLabel||{})},
     summaryCount:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.summaryCount||{})},
     staffName:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.staffName||{})}
   };
@@ -3725,6 +3725,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
     staffName:16,
     dutyCode:12,
     extraValue:10.5,
+    nairValue:10.5,
     summaryLabel:10.5,
     summaryCount:11,
     summaryAbbr:8,
@@ -3743,6 +3744,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
     "--fs-name":`${fs.staffName}px`,
     "--fs-duty":`${fs.dutyCode}px`,
     "--fs-extra":`${fs.extraValue}px`,
+    "--fs-nair":`${fs.nairValue}px`,
     "--fs-summary-label":`${fs.summaryLabel}px`,
     "--fs-summary-day":`${fs.headerAll}px`,
     "--fs-summary-count":`${fs.summaryCount}px`,
@@ -3787,16 +3789,10 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
           {roster.title}
         </div>
 
-        <div
-          className="print-date"
-          style={{
-            fontFamily:fontStack(pdfTypography.date.fontFamily),
-            fontWeight:pdfTypography.date.fontWeight
-          }}
-        >
-          दिनांक :- <u>{formatDate(roster.from)}</u>
+        <div className="print-date">
+          दिनांक :- <u style={{fontFamily:fontStack(pdfTypography.date.fontFamily),fontWeight:pdfTypography.date.fontWeight}}>{formatDate(roster.from)}</u>
           <span>ते</span>
-          दिनांक :- <u>{formatDate(roster.to)}</u>
+          दिनांक :- <u style={{fontFamily:fontStack(pdfTypography.date.fontFamily),fontWeight:pdfTypography.date.fontWeight}}>{formatDate(roster.to)}</u>
         </div>
 
       </div>
@@ -4055,7 +4051,7 @@ function PrintableRow({employee,index,duties,from,rosterType="regular",pdfTypogr
 
       {dayCells}
 
-      {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400,fontSize:`${roster.fontSizes?.nairValue||10.5}px`}}>{employee.nair||""}</td>}
+      {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400,fontSize:"var(--fs-nair)"}}>{employee.nair||""}</td>}
       <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.jama||""}</td>
       {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.ruju||""}</td>}
 
