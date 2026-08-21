@@ -670,6 +670,7 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
 .paper-roster tbody .print-duty-code{font-size:var(--fs-duty)!important;}
 .paper-roster tbody .print-duty-code small{font-size:calc(var(--fs-duty) * .58)!important;}
 .paper-roster tbody .print-extra{font-size:var(--fs-extra)!important;}
+.paper-roster tbody .print-nair-value{font-size:var(--fs-nair)!important;}
 
 .paper-summary .summary-label{font-size:var(--fs-summary-label)!important;}
 .paper-summary thead .summary-day{font-size:var(--fs-summary-day)!important;}
