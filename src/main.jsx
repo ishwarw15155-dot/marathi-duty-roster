@@ -105,9 +105,9 @@ function blankRoster() {
     },
     pdfTypography:{
       header:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
-      rollNumber:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
       date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
       dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      rollNumber:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
       extraValue:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
       summaryLabel:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
       summaryCount:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
@@ -170,10 +170,6 @@ function normalizeRoster(data={}) {
       ...base.pdfTypography.header,
       ...(data.pdfTypography?.header||{})
     },
-    rollNumber:{
-      ...base.pdfTypography.rollNumber,
-      ...(data.pdfTypography?.rollNumber||{})
-    },
     date:{
       ...base.pdfTypography.date,
       ...(data.pdfTypography?.date||{})
@@ -181,6 +177,10 @@ function normalizeRoster(data={}) {
     dutyCode:{
       ...base.pdfTypography.dutyCode,
       ...(data.pdfTypography?.dutyCode||{})
+    },
+    rollNumber:{
+      ...base.pdfTypography.rollNumber,
+      ...(data.pdfTypography?.rollNumber||{})
     },
     extraValue:{
       ...base.pdfTypography.extraValue,
@@ -1859,12 +1859,12 @@ function FontSettingsModal({value,onChange,onClose,pdfTypography,onTypographyCha
           अ क्र, रोल नं, नावे, सोम–रवि, नैर, जमा, रुजू या पूर्ण header row साठी एकच Font आणि Weight निवडा.
           Day name वर हीच setting लागू होईल; खालील date साठी Date setting स्वतंत्र आहे.
         </div>
-        {["header","rollNumber","date","dutyCode","extraValue","summaryLabel","summaryCount","staffName"].map(key=>{
+        {["header","date","dutyCode","rollNumber","extraValue","summaryLabel","summaryCount","staffName"].map(key=>{
           const labels={
             header:"Header Row — अ क्र / रोल नं / नावे / सोम–रवि / नैर / जमा / रुजू",
-            rollNumber:"रोल नं Values",
             date:"Dates — 24/08, 25/08...",
             dutyCode:"Duty Codes — M / E / PH / SS / DO",
+            rollNumber:"रोल नं Values",
             extraValue:"रुजू / नैर / जमा Values",
             summaryCount:"Summary Numbers",
             summaryLabel:"Summary Labels — सकाळ / दुपार / रापा / रासू / रजा / सुट्टया / एकूण",
@@ -3713,6 +3713,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
     header:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.header||{})},
     date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.date||{})},
     dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.dutyCode||{})},
+    rollNumber:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.rollNumber||{})},
     extraValue:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.extraValue||{})},
     summaryLabel:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.summaryLabel||{})},
     summaryCount:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.summaryCount||{})},
@@ -4045,7 +4046,7 @@ function PrintableRow({employee,index,duties,from,rosterType="regular",pdfTypogr
           className="print-roll-cell"
           style={{
             fontFamily:fontStack(pdfTypography?.rollNumber?.fontFamily||"Tiro Devanagari Marathi"),
-            fontWeight:pdfTypography?.rollNumber?.fontWeight||400
+            fontWeight:pdfTypography?.rollNumber?.fontWeight ?? 400
           }}
         >
           {employee.rollNo}
@@ -4067,7 +4068,7 @@ function PrintableRow({employee,index,duties,from,rosterType="regular",pdfTypogr
 
       {dayCells}
 
-      {!isServantRoster && <td className="print-extra print-nair-value" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.nair||""}</td>}
+      {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400,fontSize:"var(--fs-nair)"}}>{employee.nair||""}</td>}
       <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.jama||""}</td>
       {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.ruju||""}</td>}
 
