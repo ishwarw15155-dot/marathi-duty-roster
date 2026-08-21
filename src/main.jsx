@@ -32,6 +32,24 @@ function getPosts(roster){
     : DEFAULT_POSTS;
 }
 
+function displayPostName(post, gender){
+  const normalized=String(post||"")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g," ");
+
+  if(
+    normalized==="incharge" ||
+    normalized==="in-charge" ||
+    normalized==="in charge" ||
+    normalized==="in charge post"
+  ){
+    return gender==="female" ? "परिसेवीका" : "परिसेवक";
+  }
+
+  return post;
+}
+
 function createId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 }
@@ -284,6 +302,7 @@ function isSummaryExcludedEmployee(employee){
 
   return (
     group.includes("परिसेवक") ||
+    group.includes("परिसेवीका") ||
     group==="incharge" ||
     group.includes("in-charge") ||
     group.includes("in charge")
@@ -1394,7 +1413,9 @@ pdf.save(pdfName);
                       value={e.group}
                       onChange={x=>editEmployee(e.id,"group",x.target.value)}
                     >
-                      {getPosts(roster).map(g=><option key={g}>{g}</option>)}
+                      {getPosts(roster).map(g=>
+                        <option key={g}>{displayPostName(g,e.gender)}</option>
+                      )}
                     </select>
                   </td>
 
@@ -3851,7 +3872,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
 
               <tr className="group-row">
                 <td colSpan={isServantRoster ? 10 : 13}>
-                  {section.group}
+                  {displayPostName(section.group,section.rows[0]?.gender)}
                 </td>
               </tr>
 
