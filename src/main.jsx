@@ -105,7 +105,11 @@ function blankRoster() {
     },
     pdfTypography:{
       header:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
-      date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400}
+      date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      extraValue:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      summaryCount:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      staffName:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400}
     },
     savedAt:null
   };
@@ -167,6 +171,22 @@ function normalizeRoster(data={}) {
     date:{
       ...base.pdfTypography.date,
       ...(data.pdfTypography?.date||{})
+    },
+    dutyCode:{
+      ...base.pdfTypography.dutyCode,
+      ...(data.pdfTypography?.dutyCode||{})
+    },
+    extraValue:{
+      ...base.pdfTypography.extraValue,
+      ...(data.pdfTypography?.extraValue||{})
+    },
+    summaryCount:{
+      ...base.pdfTypography.summaryCount,
+      ...(data.pdfTypography?.summaryCount||{})
+    },
+    staffName:{
+      ...base.pdfTypography.staffName,
+      ...(data.pdfTypography?.staffName||{})
     }
   };
 
@@ -1829,8 +1849,15 @@ function FontSettingsModal({value,onChange,onClose,pdfTypography,onTypographyCha
           अ क्र, रोल नं, नावे, सोम–रवि, नैर, जमा, रुजू या पूर्ण header row साठी एकच Font आणि Weight निवडा.
           Day name वर हीच setting लागू होईल; खालील date साठी Date setting स्वतंत्र आहे.
         </div>
-        {["header","date"].map(key=>{
-          const labels={header:"Header Row — अ क्र / रोल नं / नावे / सोम–रवि / नैर / जमा / रुजू",date:"Dates — 24/08, 25/08..."};
+        {["header","date","dutyCode","extraValue","summaryCount","staffName"].map(key=>{
+          const labels={
+            header:"Header Row — अ क्र / रोल नं / नावे / सोम–रवि / नैर / जमा / रुजू",
+            date:"Dates — 24/08, 25/08...",
+            dutyCode:"Duty Codes — M / E / PH / SS / DO",
+            extraValue:"रुजू / नैर / जमा Values",
+            summaryCount:"Summary Numbers",
+            staffName:"Staff Names"
+          };
           const item=pdfTypography?.[key]||{fontFamily:value,fontWeight:400};
           return <div key={key} style={{
             display:"grid",
@@ -3671,7 +3698,11 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
 
   const pdfTypography={
     header:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.header||{})},
-    date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.date||{})}
+    date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.date||{})},
+    dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.dutyCode||{})},
+    extraValue:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.extraValue||{})},
+    summaryCount:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.summaryCount||{})},
+    staffName:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.staffName||{})}
   };
 
   const fs = {
@@ -3811,6 +3842,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                   duties={roster.duties}
                   from={roster.from}
                   rosterType={rosterType}
+                  pdfTypography={pdfTypography}
                 />
               )}
 
@@ -3870,7 +3902,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                 <span className="summary-abbr">({duty.abbr})</span>
               </th>
               {labels.map((_,dayIndex)=>
-                <td key={dayIndex} className="summary-count">
+                <td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(pdfTypography.summaryCount.fontFamily),fontWeight:pdfTypography.summaryCount.fontWeight}}>
                   {SUMMARY_DEFAULT_KEYS.has(duty.key) && duty.key==="leave"
                     ? (dailyLeaveCounts[dayIndex]||"")
                     : (dailyDutyCounts[dayIndex][duty.key]||"")}
@@ -3887,7 +3919,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
             <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
               सुट्टया
             </th>
-            {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyHolidayCounts[dayIndex]||""}</td>)}
+            {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(pdfTypography.summaryCount.fontFamily),fontWeight:pdfTypography.summaryCount.fontWeight}}>{dailyHolidayCounts[dayIndex]||""}</td>)}
             {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
@@ -3900,7 +3932,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                 {duty.label}
                 <span className="summary-abbr">({duty.abbr})</span>
               </th>
-              {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyDutyCounts[dayIndex][duty.key]||""}</td>)}
+              {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(pdfTypography.summaryCount.fontFamily),fontWeight:pdfTypography.summaryCount.fontWeight}}>{dailyDutyCounts[dayIndex][duty.key]||""}</td>)}
               {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
@@ -3914,7 +3946,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
             </th>
 
             {labels.map((_,dayIndex)=>
-              <td key={dayIndex} className="summary-count">
+              <td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(pdfTypography.summaryCount.fontFamily),fontWeight:pdfTypography.summaryCount.fontWeight}}>
                 {roster.employees.reduce((total,e)=>{
                   if(isSummaryExcludedEmployee(e)) return total;
 
@@ -3941,7 +3973,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
   );
 });
 
-function PrintableRow({employee,index,duties,from,rosterType="regular"}) {
+function PrintableRow({employee,index,duties,from,rosterType="regular",pdfTypography}) {
   const isServantRoster=rosterType==="servant";
   const hasLeave=!!(employee.leaveType && employee.leaveFrom && employee.leaveTo);
   const leaveDays=hasLeave
@@ -3955,7 +3987,7 @@ function PrintableRow({employee,index,duties,from,rosterType="regular"}) {
     const key=employee.duties[dayIndex];
     const duty=duties.find(d=>d.key===key);
     return (
-      <td key={`duty-${dayIndex}`} className="print-duty-code">
+      <td key={`duty-${dayIndex}`} className="print-duty-code" style={{fontFamily:fontStack(pdfTypography?.dutyCode?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.dutyCode?.fontWeight||400}}>
         {duty?.abbr || ""}
         {employee.customNotes?.[dayIndex] ? <small>{employee.customNotes[dayIndex]}</small> : null}
       </td>
@@ -3998,7 +4030,8 @@ function PrintableRow({employee,index,duties,from,rosterType="regular"}) {
         className="print-name"
         style={{
           fontSize:`${employee.marathiFontSize||16}px`,
-          fontWeight:employee.marathiBold?700:400
+          fontFamily:fontStack(pdfTypography?.staffName?.fontFamily||"Tiro Devanagari Marathi"),
+          fontWeight:pdfTypography?.staffName?.fontWeight ?? (employee.marathiBold?700:400)
         }}
       >
         <div className="print-name-inline">
@@ -4008,9 +4041,9 @@ function PrintableRow({employee,index,duties,from,rosterType="regular"}) {
 
       {dayCells}
 
-      {!isServantRoster && <td className="print-extra">{employee.nair||""}</td>}
-      <td className="print-extra">{employee.jama||""}</td>
-      {!isServantRoster && <td className="print-extra">{employee.ruju||""}</td>}
+      {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.nair||""}</td>}
+      <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.jama||""}</td>
+      {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.ruju||""}</td>}
 
     </tr>
   );
