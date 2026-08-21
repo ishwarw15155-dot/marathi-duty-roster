@@ -103,6 +103,13 @@ function blankRoster() {
       summaryRow:30,
       groupRow:33
     },
+    pdfTypography:{
+      dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      ruju:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      summary:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
+      name:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400}
+    },
     savedAt:null
   };
 }
@@ -153,6 +160,16 @@ function normalizeRoster(data={}) {
     ...(data.tableSizes||{})
   };
 
+  const pdfTypography={
+    ...base.pdfTypography,
+    ...(data.pdfTypography||{}),
+    dutyCode:{...base.pdfTypography.dutyCode,...(data.pdfTypography?.dutyCode||{})},
+    ruju:{...base.pdfTypography.ruju,...(data.pdfTypography?.ruju||{})},
+    date:{...base.pdfTypography.date,...(data.pdfTypography?.date||{})},
+    summary:{...base.pdfTypography.summary,...(data.pdfTypography?.summary||{})},
+    name:{...base.pdfTypography.name,...(data.pdfTypography?.name||{})}
+  };
+
   Object.keys(tableSizes).forEach(key=>{
     const mins={
       sr:30, roll:40, name:110, day:35, extra:25,
@@ -179,6 +196,7 @@ function normalizeRoster(data={}) {
     fontFamily:data.fontFamily||base.fontFamily,
     globalFontSize:Math.max(12,Math.min(24,Number(data.globalFontSize)||base.globalFontSize)),
     tableSizes,
+    pdfTypography,
     fontSizes:{
       ...base.fontSizes,
       ...(data.fontSizes||{}),
@@ -226,20 +244,6 @@ function isHolidayDuty(duty){
 
 function isLeaveDuty(duty){
   return LEAVE_CODES.has(dutyCode(duty));
-}
-
-function isSummaryExcludedEmployee(employee){
-  const group=String(employee?.group||"")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g," " );
-
-  return (
-    group.includes("परिसेवक") ||
-    group==="incharge" ||
-    group.includes("in-charge") ||
-    group.includes("in charge")
-  );
 }
 
 function formatDate(value) {
@@ -1747,6 +1751,14 @@ function App({user,onLogout,selectedWardId=null,selectedWardName="",selectedRost
       <FontSettingsModal
         value={roster.fontFamily}
         onChange={v=>update("fontFamily",v)}
+        pdfTypography={roster.pdfTypography}
+        onTypographyChange={(key,field,value)=>setRoster(r=>({
+          ...r,
+          pdfTypography:{
+            ...r.pdfTypography,
+            [key]:{...r.pdfTypography?.[key],[field]:value}
+          }
+        }))}
         onClose={()=>setShowFontSettings(false)}
       />
     }
@@ -1767,7 +1779,15 @@ function fontStack(font){
   return '"Mukta","Noto Sans Devanagari","Nirmala UI",sans-serif';
 }
 
-function FontSettingsModal({value,onChange,onClose}){
+function FontSettingsModal({value,onChange,pdfTypography,onTypographyChange,onClose}){
+  const typographyItems=[
+    ["dutyCode","Duty Codes / ड्युटी कोड (M, E, PH, SS, DO)"],
+    ["ruju","रुजू Values"],
+    ["date","Dates / दिनांक"],
+    ["summary","Summary Numbers / सारांश संख्या"],
+    ["name","Staff Names / कर्मचारी नावे"]
+  ];
+
   return <div className="modal-backdrop">
     <div className="font-modal">
       <div className="modal-head">
@@ -1788,9 +1808,52 @@ function FontSettingsModal({value,onChange,onClose}){
         </button>)}
       </div>
 
+      <div style={{
+        margin:"0 16px 14px",
+        padding:"13px",
+        border:"1px solid #e0e5ea",
+        borderRadius:8,
+        background:"#fafbfc"
+      }}>
+        <b style={{fontSize:13}}>PDF Typography / PDF अक्षर शैली</b>
+        <div style={{fontSize:10,color:"#727d88",marginTop:3,marginBottom:10}}>
+          प्रत्येक घटकासाठी स्वतंत्र Font आणि Weight निवडा.
+        </div>
+        <div style={{display:"grid",gap:8}}>
+          {typographyItems.map(([key,label])=>{
+            const item=pdfTypography?.[key]||{fontFamily:value,fontWeight:400};
+            return (
+              <div key={key} style={{
+                display:"grid",
+                gridTemplateColumns:"1.4fr 1fr .8fr",
+                gap:7,
+                alignItems:"center"
+              }}>
+                <span style={{fontSize:11,fontWeight:600}}>{label}</span>
+                <select
+                  value={item.fontFamily}
+                  onChange={e=>onTypographyChange(key,"fontFamily",e.target.value)}
+                >
+                  {FONT_OPTIONS.map(font=><option key={font.value} value={font.value}>{font.label}</option>)}
+                </select>
+                <select
+                  value={String(item.fontWeight)}
+                  onChange={e=>onTypographyChange(key,"fontWeight",Number(e.target.value))}
+                >
+                  <option value="400">Normal</option>
+                  <option value="500">Medium</option>
+                  <option value="600">Semi Bold</option>
+                  <option value="700">Bold</option>
+                </select>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="font-preview" style={{fontFamily:fontStack(value)}}>
         <b>Preview / नमुना</b>
-        <div>श्री सागर वाल्हेकर — सकाळ (M) — सोम</div>
+        <div>श्री. सागर वाल्हेकर — सकाळ (M) — सोम — 24/08/2026 — रुजू 14/2/22</div>
       </div>
 
       <div className="modal-foot">
@@ -1835,17 +1898,8 @@ function AdminDashboard({user,onLogout}){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [showCreate,setShowCreate]=useState(false);
-  const [showEdit,setShowEdit]=useState(false);
   const [busy,setBusy]=useState(false);
-  const [editBusy,setEditBusy]=useState(false);
-  const [editWard,setEditWard]=useState(null);
   const [form,setForm]=useState({
-    name:"",
-    username:"",
-    password:""
-  });
-  const [editForm,setEditForm]=useState({
-    wardId:"",
     name:"",
     username:"",
     password:""
@@ -2065,98 +2119,6 @@ function AdminDashboard({user,onLogout}){
       setError(
         err.message||"Unable to update ward."
       );
-    }
-  };
-
-  const startEditWard=ward=>{
-    const wardId=ward?.id||ward?.ward_id||null;
-    if(!wardId){
-      setError("Ward ID is missing.");
-      return;
-    }
-
-    setError("");
-    setEditWard(ward);
-    setEditForm({
-      wardId:String(wardId),
-      name:String(ward?.ward_name||ward?.name||ward?.ward||""),
-      username:String(ward?.username||ward?.email||""),
-      password:""
-    });
-    setShowEdit(true);
-  };
-
-  const saveEditWard=async e=>{
-    e.preventDefault();
-
-    if(!editForm.wardId){
-      setError("Ward ID is missing.");
-      return;
-    }
-
-    if(!editForm.name.trim() || !editForm.username.trim()){
-      setError("Ward name and username are required.");
-      return;
-    }
-
-    if(editForm.password && editForm.password.length<6){
-      setError("Ward password must be at least 6 characters.");
-      return;
-    }
-
-    setEditBusy(true);
-    setError("");
-
-    try{
-      const currentWard=editWard||{};
-      const active =
-        typeof currentWard.active==="boolean"
-          ? currentWard.active
-          : typeof currentWard.is_active==="boolean"
-            ? currentWard.is_active
-            : true;
-
-      const res=await fetch("/api/update-ward",{
-        method:"PATCH",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          wardId:editForm.wardId,
-          wardName:editForm.name.trim(),
-          wardCode:currentWard?.ward_code||"",
-          username:editForm.username.trim(),
-          password:editForm.password,
-          active
-        })
-      });
-
-      const data=await res.json().catch(()=>({}));
-
-      if(!res.ok){
-        throw new Error(
-          data.error||"Unable to update ward."
-        );
-      }
-
-      setShowEdit(false);
-      setEditWard(null);
-      setEditForm({
-        wardId:"",
-        name:"",
-        username:"",
-        password:""
-      });
-
-      await loadWards();
-
-    }catch(err){
-      setError(
-        err.message||"Unable to update ward."
-      );
-    }finally{
-      setEditBusy(false);
     }
   };
 
@@ -2429,14 +2391,6 @@ function AdminDashboard({user,onLogout}){
 
                           <button
                             onClick={()=>
-                              startEditWard(ward)
-                            }
-                          >
-                            Edit / Change Password
-                          </button>
-
-                          <button
-                            onClick={()=>
                               toggleWard(ward)
                             }
                           >
@@ -2574,105 +2528,6 @@ function AdminDashboard({user,onLogout}){
                 {busy
                   ? "Creating..."
                   : "Create Ward"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {showEdit&&(
-        <div className="modal-backdrop">
-          <form
-            className="ward-modal"
-            onSubmit={saveEditWard}
-          >
-            <div className="modal-head">
-              <div>
-                <h2>Edit Ward / Change Login</h2>
-                <p>
-                  Ward name, username आणि password बदलता येतील.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={()=>{
-                  if(!editBusy){
-                    setShowEdit(false);
-                  }
-                }}
-              >
-                <X size={18}/>
-              </button>
-            </div>
-
-            <div className="ward-modal-body">
-              <label>
-                <span>Ward Name</span>
-                <input
-                  value={editForm.name}
-                  onChange={e=>
-                    setEditForm(f=>({
-                      ...f,
-                      name:e.target.value
-                    }))
-                  }
-                  required
-                />
-              </label>
-
-              <label>
-                <span>Username</span>
-                <input
-                  value={editForm.username}
-                  onChange={e=>
-                    setEditForm(f=>({
-                      ...f,
-                      username:e.target.value
-                    }))
-                  }
-                  autoComplete="off"
-                  required
-                />
-              </label>
-
-              <label>
-                <span>New Password</span>
-                <input
-                  type="password"
-                  value={editForm.password}
-                  onChange={e=>
-                    setEditForm(f=>({
-                      ...f,
-                      password:e.target.value
-                    }))
-                  }
-                  placeholder="Leave blank to keep current password"
-                  autoComplete="new-password"
-                />
-              </label>
-            </div>
-
-            <div className="modal-foot">
-              <button
-                type="button"
-                onClick={()=>{
-                  if(!editBusy){
-                    setShowEdit(false);
-                  }
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                className="dark-btn"
-                disabled={editBusy}
-              >
-                {editBusy
-                  ? "Saving..."
-                  : "Save Changes"}
               </button>
             </div>
           </form>
@@ -3568,12 +3423,6 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
   const dailyLeaveCounts=Array(7).fill(0);
 
   roster.employees.forEach(e=>{
-    // Incharge / परिसेवक are operational staff and are intentionally
-    // excluded from every summary count (duties, leave and holidays).
-    if(isSummaryExcludedEmployee(e)){
-      return;
-    }
-
     // EL/ML date range contributes to the Leave summary,
     // but NEVER overwrites the employee's selected daily duty.
     e.duties.forEach((key,dayIndex)=>{
@@ -3616,7 +3465,25 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
     ...(roster.fontSizes||{})
   };
 
+  const typography={
+    dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.dutyCode||{})},
+    ruju:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.ruju||{})},
+    date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.date||{})},
+    summary:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.summary||{})},
+    name:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.name||{})}
+  };
+
   const fontVars = {
+    "--font-duty-code":fontStack(typography.dutyCode.fontFamily),
+    "--weight-duty-code":typography.dutyCode.fontWeight,
+    "--font-ruju":fontStack(typography.ruju.fontFamily),
+    "--weight-ruju":typography.ruju.fontWeight,
+    "--font-date":fontStack(typography.date.fontFamily),
+    "--weight-date":typography.date.fontWeight,
+    "--font-summary":fontStack(typography.summary.fontFamily),
+    "--weight-summary":typography.summary.fontWeight,
+    "--font-name":fontStack(typography.name.fontFamily),
+    "--weight-name":typography.name.fontWeight,
     "--fs-hospital":`${fs.hospital}px`,
     "--fs-department":`${fs.department}px`,
     "--fs-ward":`${fs.ward}px`,
@@ -3672,7 +3539,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
           {roster.title}
         </div>
 
-        <div className="print-date">
+        <div className="print-date" style={{fontFamily:fontStack(typography.date.fontFamily),fontWeight:typography.date.fontWeight}}>
           दिनांक :- <u>{formatDate(roster.from)}</u>
           <span>ते</span>
           दिनांक :- <u>{formatDate(roster.to)}</u>
@@ -3731,6 +3598,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                   duties={roster.duties}
                   from={roster.from}
                   rosterType={rosterType}
+                  pdfTypography={typography}
                 />
               )}
 
@@ -3781,12 +3649,12 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
 
           {summaryDuties.map(duty=>
             <tr key={duty.key}>
-              <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
+              <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3} style={{fontFamily:fontStack(typography.summary.fontFamily),fontWeight:typography.summary.fontWeight}}>
                 {duty.label}
                 <span className="summary-abbr">({duty.abbr})</span>
               </th>
               {labels.map((_,dayIndex)=>
-                <td key={dayIndex} className="summary-count">
+                <td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(typography.summary.fontFamily),fontWeight:typography.summary.fontWeight}}>
                   {SUMMARY_DEFAULT_KEYS.has(duty.key) && duty.key==="leave"
                     ? (dailyLeaveCounts[dayIndex]||"")
                     : (dailyDutyCounts[dayIndex][duty.key]||"")}
@@ -3800,10 +3668,10 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
           )}
 
           <tr>
-            <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
+            <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3} style={{fontFamily:fontStack(typography.summary.fontFamily),fontWeight:typography.summary.fontWeight}}>
               सुट्टया
             </th>
-            {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyHolidayCounts[dayIndex]||""}</td>)}
+            {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(typography.summary.fontFamily),fontWeight:typography.summary.fontWeight}}>{dailyHolidayCounts[dayIndex]||""}</td>)}
             {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
             {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
@@ -3812,11 +3680,11 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
 
           {customSummaryDuties.map(duty=>
             <tr key={`custom-summary-${duty.key}`}>
-              <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
+              <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3} style={{fontFamily:fontStack(typography.summary.fontFamily),fontWeight:typography.summary.fontWeight}}>
                 {duty.label}
                 <span className="summary-abbr">({duty.abbr})</span>
               </th>
-              {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count">{dailyDutyCounts[dayIndex][duty.key]||""}</td>)}
+              {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(typography.summary.fontFamily),fontWeight:typography.summary.fontWeight}}>{dailyDutyCounts[dayIndex][duty.key]||""}</td>)}
               {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
               {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
@@ -3825,15 +3693,13 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
           )}
 
           <tr className="grand-total">
-            <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
+            <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3} style={{fontFamily:fontStack(typography.summary.fontFamily),fontWeight:typography.summary.fontWeight}}>
               एकूण
             </th>
 
             {labels.map((_,dayIndex)=>
-              <td key={dayIndex} className="summary-count">
+              <td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(typography.summary.fontFamily),fontWeight:typography.summary.fontWeight}}>
                 {roster.employees.reduce((total,e)=>{
-                  if(isSummaryExcludedEmployee(e)) return total;
-
                   const date=isoDateForDay(roster.from,dayIndex);
                   const onLeave=!!(
                     e.leaveType && e.leaveFrom && e.leaveTo &&
@@ -3857,7 +3723,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
   );
 });
 
-function PrintableRow({employee,index,duties,from,rosterType="regular"}) {
+function PrintableRow({employee,index,duties,from,rosterType="regular",pdfTypography}) {
   const isServantRoster=rosterType==="servant";
   const hasLeave=!!(employee.leaveType && employee.leaveFrom && employee.leaveTo);
   const leaveDays=hasLeave
@@ -3871,7 +3737,7 @@ function PrintableRow({employee,index,duties,from,rosterType="regular"}) {
     const key=employee.duties[dayIndex];
     const duty=duties.find(d=>d.key===key);
     return (
-      <td key={`duty-${dayIndex}`} className="print-duty-code">
+      <td key={`duty-${dayIndex}`} className="print-duty-code" style={{fontFamily:fontStack(pdfTypography?.dutyCode?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.dutyCode?.fontWeight??400}}>
         {duty?.abbr || ""}
         {employee.customNotes?.[dayIndex] ? <small>{employee.customNotes[dayIndex]}</small> : null}
       </td>
@@ -3914,7 +3780,8 @@ function PrintableRow({employee,index,duties,from,rosterType="regular"}) {
         className="print-name"
         style={{
           fontSize:`${employee.marathiFontSize||16}px`,
-          fontWeight:employee.marathiBold?700:400
+          fontWeight:employee.marathiBold?700:400,
+          fontFamily:fontStack(pdfTypography?.name?.fontFamily||"Tiro Devanagari Marathi")
         }}
       >
         <div className="print-name-inline">
@@ -3926,7 +3793,7 @@ function PrintableRow({employee,index,duties,from,rosterType="regular"}) {
 
       {!isServantRoster && <td className="print-extra">{employee.nair||""}</td>}
       <td className="print-extra">{employee.jama||""}</td>
-      {!isServantRoster && <td className="print-extra">{employee.ruju||""}</td>}
+      {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.ruju?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.ruju?.fontWeight??400}}>{employee.ruju||""}</td>}
 
     </tr>
   );
