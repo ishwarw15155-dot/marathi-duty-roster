@@ -3793,7 +3793,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
         </div>
 
         <div className="print-title">
-          {roster.title}
+          {isServantRoster ? "कक्षसेवक व सफ़ाईगार सप्ताहिक कामाचे वेळापत्रक" : roster.title}
         </div>
 
         <div className="print-date">
@@ -3870,6 +3870,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
 
       </table>
 
+      {!isServantRoster && (
       <table className={`paper-summary ${isServantRoster ? "paper-summary-servant" : "paper-summary-regular"}`}>
 
         <colgroup>
@@ -3985,6 +3986,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
         </tbody>
 
       </table>
+      )}
 
     </div>
   );
