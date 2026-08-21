@@ -4051,7 +4051,7 @@ function PrintableRow({employee,index,duties,from,rosterType="regular",pdfTypogr
 
       {dayCells}
 
-      {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400,fontSize:"var(--fs-nair)"}}>{employee.nair||""}</td>}
+      {!isServantRoster && <td className="print-extra print-nair-value" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.nair||""}</td>}
       <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.jama||""}</td>
       {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.ruju||""}</td>}
 
