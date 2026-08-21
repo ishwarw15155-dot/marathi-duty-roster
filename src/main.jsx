@@ -1020,7 +1020,11 @@ function App({user,onLogout,selectedWardId=null,selectedWardName="",selectedRost
         offset+=h;
       }
 
-      pdf.save(`duty-roster-${roster.from||"a4"}.pdf`);
+      const pdfName = isServantRoster
+  ? `Servant Duty List - ${formatDate(roster.from).replace(/\//g,"-")}.pdf`
+  : `Nurses Duty List - ${formatDate(roster.from).replace(/\//g,"-")}.pdf`;
+
+pdf.save(pdfName);
     }catch(error){
       console.error(error);
       alert("PDF तयार करताना समस्या आली.");
