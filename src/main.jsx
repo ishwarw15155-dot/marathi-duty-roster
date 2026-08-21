@@ -228,6 +228,20 @@ function isLeaveDuty(duty){
   return LEAVE_CODES.has(dutyCode(duty));
 }
 
+function isSummaryExcludedEmployee(employee){
+  const group=String(employee?.group||"")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g," " );
+
+  return (
+    group.includes("परिसेवक") ||
+    group==="incharge" ||
+    group.includes("in-charge") ||
+    group.includes("in charge")
+  );
+}
+
 function formatDate(value) {
   if (!value) return "";
   const [y,m,d]=value.split("-");
@@ -3554,6 +3568,12 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
   const dailyLeaveCounts=Array(7).fill(0);
 
   roster.employees.forEach(e=>{
+    // Incharge / परिसेवक are operational staff and are intentionally
+    // excluded from every summary count (duties, leave and holidays).
+    if(isSummaryExcludedEmployee(e)){
+      return;
+    }
+
     // EL/ML date range contributes to the Leave summary,
     // but NEVER overwrites the employee's selected daily duty.
     e.duties.forEach((key,dayIndex)=>{
@@ -3812,6 +3832,8 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
             {labels.map((_,dayIndex)=>
               <td key={dayIndex} className="summary-count">
                 {roster.employees.reduce((total,e)=>{
+                  if(isSummaryExcludedEmployee(e)) return total;
+
                   const date=isoDateForDay(roster.from,dayIndex);
                   const onLeave=!!(
                     e.leaveType && e.leaveFrom && e.leaveTo &&
