@@ -1821,8 +1821,17 @@ function AdminDashboard({user,onLogout}){
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [showCreate,setShowCreate]=useState(false);
+  const [showEdit,setShowEdit]=useState(false);
   const [busy,setBusy]=useState(false);
+  const [editBusy,setEditBusy]=useState(false);
+  const [editWard,setEditWard]=useState(null);
   const [form,setForm]=useState({
+    name:"",
+    username:"",
+    password:""
+  });
+  const [editForm,setEditForm]=useState({
+    wardId:"",
     name:"",
     username:"",
     password:""
@@ -2042,6 +2051,98 @@ function AdminDashboard({user,onLogout}){
       setError(
         err.message||"Unable to update ward."
       );
+    }
+  };
+
+  const startEditWard=ward=>{
+    const wardId=ward?.id||ward?.ward_id||null;
+    if(!wardId){
+      setError("Ward ID is missing.");
+      return;
+    }
+
+    setError("");
+    setEditWard(ward);
+    setEditForm({
+      wardId:String(wardId),
+      name:String(ward?.ward_name||ward?.name||ward?.ward||""),
+      username:String(ward?.username||ward?.email||""),
+      password:""
+    });
+    setShowEdit(true);
+  };
+
+  const saveEditWard=async e=>{
+    e.preventDefault();
+
+    if(!editForm.wardId){
+      setError("Ward ID is missing.");
+      return;
+    }
+
+    if(!editForm.name.trim() || !editForm.username.trim()){
+      setError("Ward name and username are required.");
+      return;
+    }
+
+    if(editForm.password && editForm.password.length<6){
+      setError("Ward password must be at least 6 characters.");
+      return;
+    }
+
+    setEditBusy(true);
+    setError("");
+
+    try{
+      const currentWard=editWard||{};
+      const active =
+        typeof currentWard.active==="boolean"
+          ? currentWard.active
+          : typeof currentWard.is_active==="boolean"
+            ? currentWard.is_active
+            : true;
+
+      const res=await fetch("/api/update-ward",{
+        method:"PATCH",
+        credentials:"include",
+        headers:{
+          "Content-Type":"application/json"
+        },
+        body:JSON.stringify({
+          wardId:editForm.wardId,
+          wardName:editForm.name.trim(),
+          wardCode:currentWard?.ward_code||"",
+          username:editForm.username.trim(),
+          password:editForm.password,
+          active
+        })
+      });
+
+      const data=await res.json().catch(()=>({}));
+
+      if(!res.ok){
+        throw new Error(
+          data.error||"Unable to update ward."
+        );
+      }
+
+      setShowEdit(false);
+      setEditWard(null);
+      setEditForm({
+        wardId:"",
+        name:"",
+        username:"",
+        password:""
+      });
+
+      await loadWards();
+
+    }catch(err){
+      setError(
+        err.message||"Unable to update ward."
+      );
+    }finally{
+      setEditBusy(false);
     }
   };
 
@@ -2314,6 +2415,14 @@ function AdminDashboard({user,onLogout}){
 
                           <button
                             onClick={()=>
+                              startEditWard(ward)
+                            }
+                          >
+                            Edit / Change Password
+                          </button>
+
+                          <button
+                            onClick={()=>
                               toggleWard(ward)
                             }
                           >
@@ -2451,6 +2560,105 @@ function AdminDashboard({user,onLogout}){
                 {busy
                   ? "Creating..."
                   : "Create Ward"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showEdit&&(
+        <div className="modal-backdrop">
+          <form
+            className="ward-modal"
+            onSubmit={saveEditWard}
+          >
+            <div className="modal-head">
+              <div>
+                <h2>Edit Ward / Change Login</h2>
+                <p>
+                  Ward name, username आणि password बदलता येतील.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={()=>{
+                  if(!editBusy){
+                    setShowEdit(false);
+                  }
+                }}
+              >
+                <X size={18}/>
+              </button>
+            </div>
+
+            <div className="ward-modal-body">
+              <label>
+                <span>Ward Name</span>
+                <input
+                  value={editForm.name}
+                  onChange={e=>
+                    setEditForm(f=>({
+                      ...f,
+                      name:e.target.value
+                    }))
+                  }
+                  required
+                />
+              </label>
+
+              <label>
+                <span>Username</span>
+                <input
+                  value={editForm.username}
+                  onChange={e=>
+                    setEditForm(f=>({
+                      ...f,
+                      username:e.target.value
+                    }))
+                  }
+                  autoComplete="off"
+                  required
+                />
+              </label>
+
+              <label>
+                <span>New Password</span>
+                <input
+                  type="password"
+                  value={editForm.password}
+                  onChange={e=>
+                    setEditForm(f=>({
+                      ...f,
+                      password:e.target.value
+                    }))
+                  }
+                  placeholder="Leave blank to keep current password"
+                  autoComplete="new-password"
+                />
+              </label>
+            </div>
+
+            <div className="modal-foot">
+              <button
+                type="button"
+                onClick={()=>{
+                  if(!editBusy){
+                    setShowEdit(false);
+                  }
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                className="dark-btn"
+                disabled={editBusy}
+              >
+                {editBusy
+                  ? "Saving..."
+                  : "Save Changes"}
               </button>
             </div>
           </form>
@@ -3345,32 +3553,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
   const dailyHolidayCounts=Array(7).fill(0);
   const dailyLeaveCounts=Array(7).fill(0);
 
-  /*
-   * परिसेवक / Parisevak and Incharge staff are excluded
-   * from every summary count, including duty, leave,
-   * holiday and grand-total counts.
-   */
-  const isExcludedFromSummary=employee=>{
-    const group=String(employee?.group||"")
-      .trim()
-      .toLowerCase();
-
-    const normalized=group
-      .replace(/\s+/g,"")
-      .replace(/[._-]/g,"");
-
-    return (
-      normalized==="परिसेवक" ||
-      normalized==="parisevak" ||
-      normalized==="incharge" ||
-      normalized==="in-charge" ||
-      normalized==="इन्चार्ज" ||
-      normalized==="इनचार्ज"
-    );
-  };
-
   roster.employees.forEach(e=>{
-    if(isExcludedFromSummary(e)) return;
     // EL/ML date range contributes to the Leave summary,
     // but NEVER overwrites the employee's selected daily duty.
     e.duties.forEach((key,dayIndex)=>{
@@ -3629,14 +3812,11 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
             {labels.map((_,dayIndex)=>
               <td key={dayIndex} className="summary-count">
                 {roster.employees.reduce((total,e)=>{
-                  if(isExcludedFromSummary(e)) return total;
-
                   const date=isoDateForDay(roster.from,dayIndex);
                   const onLeave=!!(
                     e.leaveType && e.leaveFrom && e.leaveTo &&
                     date && date>=e.leaveFrom && date<=e.leaveTo
                   );
-
                   return total + (e.duties[dayIndex] || onLeave ? 1 : 0);
                 },0)||""}
               </td>
