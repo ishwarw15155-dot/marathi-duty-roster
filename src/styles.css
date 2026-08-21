@@ -1282,3 +1282,74 @@ body,button,input,select,textarea{font-family:var(--marathi-font);}
     display:none !important;
   }
 }
+
+/* FINAL: Summary labels normal weight and lighter grid lines */
+.paper-summary th,
+.paper-summary td {
+  border: 0.75px solid #666 !important;
+  font-weight: 400 !important;
+}
+
+.paper-summary .summary-duty,
+.paper-summary .summary-duty.summary-label,
+.paper-summary .summary-label,
+.paper-summary .summary-abbr {
+  font-weight: 400 !important;
+}
+
+.paper-summary .summary-abbr {
+  font-weight: 400 !important;
+}
+
+.paper-summary .summary-count {
+  font-weight: 400 !important;
+}
+
+.paper-summary tbody th,
+.paper-summary tbody td {
+  font-weight: 400 !important;
+}
+
+.paper-summary .grand-total th,
+.paper-summary .grand-total td {
+  font-weight: 400 !important;
+}
+
+@media print {
+  .paper-summary th,
+  .paper-summary td {
+    border-width: 0.75px !important;
+    border-color: #666 !important;
+    font-weight: 400 !important;
+  }
+}
+
+/* FINAL: make ALL printable roster and summary grid lines light/thin */
+.paper-roster,
+.paper-summary {
+  border-collapse: collapse !important;
+}
+
+.paper-roster th,
+.paper-roster td,
+.paper-summary th,
+.paper-summary td {
+  border: 0.75px solid #666 !important;
+}
+
+/* Keep group separators from becoming visually heavier */
+.paper-roster .group-row td {
+  border: 0.75px solid #666 !important;
+}
+
+@media print {
+  .paper-roster th,
+  .paper-roster td,
+  .paper-summary th,
+  .paper-summary td,
+  .paper-roster .group-row td {
+    border-width: 0.75px !important;
+    border-style: solid !important;
+    border-color: #666 !important;
+  }
+}
