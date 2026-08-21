@@ -337,9 +337,28 @@ function cleanMarathiText(text) {
 
 function transliterateName(name) {
   if (!name?.trim()) return "";
-  if (/[\u0900-\u097F]/.test(name)) return cleanMarathiText(name);
+
+  if (/[\u0900-\u097F]/.test(name)) {
+    return cleanMarathiText(name);
+  }
+
   try {
-    return cleanMarathiText(Sanscript.t(name,"itrans","devanagari"));
+    let result = cleanMarathiText(
+      Sanscript.t(name, "itrans", "devanagari")
+    );
+
+    // Marathi spelling corrections
+    const corrections = {
+      "सुर्य": "सूर्य",
+      "वन्श": "वंश",
+      "सुर्यवंश": "सूर्यवंश"
+    };
+
+    Object.entries(corrections).forEach(([wrong, correct]) => {
+      result = result.replaceAll(wrong, correct);
+    });
+
+    return result;
   } catch {
     return name;
   }
