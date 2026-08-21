@@ -3720,8 +3720,8 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                 key={i}
                 className="p-day"
                 style={{
-                  fontFamily:fontStack(typography.date.fontFamily),
-                  fontWeight:typography.date.fontWeight
+                  fontFamily:fontStack(roster.fontFamily),
+                  fontWeight:400
                 }}
               >
                 {d.short}
@@ -3794,8 +3794,8 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
                 key={i}
                 className="summary-day"
                 style={{
-                  fontFamily:fontStack(typography.date.fontFamily),
-                  fontWeight:typography.date.fontWeight
+                  fontFamily:fontStack(roster.fontFamily),
+                  fontWeight:400
                 }}
               >
                 {d.short}
