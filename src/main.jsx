@@ -3707,6 +3707,7 @@ const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterT
     date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.date||{})},
     dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.dutyCode||{})},
     extraValue:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.extraValue||{})},
+    summaryLabel:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.summaryLabel||{})},
     summaryCount:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.summaryCount||{})},
     staffName:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.staffName||{})}
   };
