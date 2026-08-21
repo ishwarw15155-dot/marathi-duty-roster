@@ -1,4054 +1,1355 @@
-/* v13.9: New week clears weekly duties/notes/EL-ML range, while preserving नैर/जमा/रुजू. */
-import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
-import Sanscript from "@indic-transliteration/sanscript";
-import {
-  CalendarDays, Download, FileDown, FileText, Plus, Printer, Save,
-  Trash2, Upload, RotateCcw, Copy, Check, Bold, Minus,
-  Plus as PlusIcon, Settings2, X, LogIn, LogOut, FolderOpen
-} from "lucide-react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
-import "./styles.css";
+@import url("https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Tiro+Devanagari+Marathi:ital@0;1&display=swap");
 
-const DAYS = ["सोम","मंगळ","बुध","गुरु","शुक्र","शनि","रवि"];
-const DAY_NAMES = ["रवि","सोम","मंगळ","बुध","गुरु","शुक्र","शनि"];
 
-const DEFAULT_DUTIES = [
-  { key:"morning", label:"सकाळ", abbr:"M", description:"Morning", login:"", logout:"", includeInSummary:true },
-  { key:"evening", label:"दुपार", abbr:"E", description:"Evening", login:"", logout:"", includeInSummary:true },
-  { key:"night", label:"रापा", abbr:"N", description:"Night", login:"", logout:"", includeInSummary:true },
-  { key:"nightoff", label:"रासू", abbr:"NO", description:"Night Off", login:"", logout:"", includeInSummary:true },
-  { key:"leave", label:"रजा", abbr:"L", description:"Leave", login:"", logout:"", includeInSummary:true, countsAsHoliday:false }
-];
-
-const DEFAULT_POSTS = ["परिसेवक","अधिपरिचारिका","कक्षसेवक","सफाईगार"];
-const HOLIDAY_CODES = new Set(["PH","SS","FS","CL"]);
-const LEAVE_CODES = new Set(["L","EL","ML"]);
-
-function getPosts(roster){
-  return Array.isArray(roster.posts) && roster.posts.length
-    ? roster.posts
-    : DEFAULT_POSTS;
+:root{
+  font-family:"Noto Sans Devanagari",system-ui,sans-serif;
+  color:#17202a;
+  background:#f4f6f8
 }
 
-function createId() {
-  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6f8}
+button,input,select{font:inherit}
+button{cursor:pointer}
+
+.topbar{
+  height:70px;background:#fff;border-bottom:1px solid #dfe4ea;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 28px;position:sticky;top:0;z-index:30
+}
+.brand{font-size:19px;font-weight:700}
+.brand-sub{font-size:11px;color:#7a8490}
+.top-actions{display:flex;gap:8px}
+.top-actions button,.inline-actions button,.bottom-actions button,.upload-btn,
+.preview-bar button,.manage-duty{
+  border:1px solid #cfd5dd;background:#fff;border-radius:7px;
+  padding:8px 11px;display:inline-flex;align-items:center;gap:6px;color:#303942
+}
+.dark-btn{background:#202831!important;color:#fff!important;border-color:#202831!important}
+.saved-btn{background:#edf8f0!important;color:#19733a!important;border-color:#bde0c6!important}
+
+.layout{
+  max-width:1500px;margin:22px auto;padding:0 18px;
+  display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:18px
+}
+.main-panel,.side-panel{
+  background:#fff;border:1px solid #dce2e8;border-radius:10px;
+  box-shadow:0 2px 10px #00000008
+}
+.main-panel{min-width:0}
+
+.tabs{
+  height:47px;border-bottom:1px solid #e2e6eb;
+  padding:0 18px;display:flex;gap:2px
+}
+.tabs button{
+  border:0;background:none;padding:0 14px;color:#77818d
+}
+.tabs button.active{
+  color:#111820;font-weight:700;border-bottom:2px solid #111820
 }
 
-function newEmployee(group="अधिपरिचारिका") {
-  return {
-    id:createId(),
-    group,
-    rollNo:"",
-    englishName:"",
-    marathiName:"",
-    gender:"male",
-    nair:"",
-    jama:"",
-    ruju:"",
-    leaveType:"",
-    leaveFrom:"",
-    leaveTo:"",
-    marathiFontSize:16,
-    marathiBold:false,
-    duties:Array(7).fill(""),
-    customNotes:Array(7).fill("")
-  };
+.heading{padding:20px 20px 12px}
+.heading h1{font-size:18px;margin:0}
+.heading p{font-size:12px;color:#737e89;margin:5px 0 0}
+
+.form-grid{
+  padding:0 20px 14px;display:grid;
+  grid-template-columns:repeat(3,1fr);gap:12px
+}
+.form-grid label{font-size:11px;color:#5e6975}
+.wide-field{grid-column:span 3}
+
+.input-wrap{position:relative;margin-top:5px}
+.input-wrap svg{position:absolute;left:9px;top:9px;color:#7b8590}
+.input-wrap svg+input{padding-left:31px}
+
+input,select{
+  width:100%;border:1px solid #cdd4dc;border-radius:6px;
+  background:#fff;padding:8px 9px;outline:none;color:#1d2730
+}
+input:focus,select:focus{
+  border-color:#7a8794;box-shadow:0 0 0 2px #7a879418
 }
 
-function blankRoster() {
-  return {
-    hospital:"ससून सर्वोपचार रुग्णालय, पुणे",
-    department:"मनोरुग्णशास्त्र विभाग",
-    ward:"कक्ष क्र. २६",
-    title:"परिसेवक / अधिपरिचारिका कामाचे साप्ताहिक वेळापत्रक",
-    from:"",
-    to:"",
-    posts:[...DEFAULT_POSTS],
-    employees:[
-      newEmployee("परिसेवक"),
-      newEmployee("अधिपरिचारिका"),
-      newEmployee("कक्षसेवक"),
-      newEmployee("सफाईगार")
-    ],
-    duties:DEFAULT_DUTIES.map(d=>({...d})),
-    fontFamily:"Mukta",
-    globalFontSize:16,
-    fontSizes:{
-      hospital:18,
-      department:18,
-      ward:16,
-      title:15,
-      date:13,
-      headerAll:11,
-      group:12,
-      rollNumber:10.5,
-      staffName:16,
-      dutyCode:12,
-      extraValue:10.5,
-      summaryLabel:10.5,
-        summaryCount:11,
-      summaryAbbr:8
-    },
-    tableSizes:{
-      sr:40,
-      roll:58,
-      name:165,
-      day:49,
-      extra:40,
-      row:29,
-      headerRow:43,
-      summaryHeaderRow:37,
-      summaryRow:30,
-      groupRow:33
-    },
-    pdfTypography:{
-      header:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
-      date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
-      dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
-      extraValue:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
-      summaryCount:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400},
-      staffName:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400}
-    },
-    savedAt:null
-  };
+.section-head{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  padding:13px 20px 9px;border-top:1px solid #edf0f3
+}
+.section-head h2{font-size:14px;margin:0}
+.section-head p{font-size:11px;color:#7b8590;margin:2px 0 0}
+.inline-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+.employee-table-wrap,.assignment-wrap{
+  margin:0 20px;overflow:auto;border:1px solid #dce2e8;border-radius:7px
+}
+.employee-table,.assignment-table{
+  width:100%;border-collapse:collapse;min-width:980px
+}
+.employee-table th,.employee-table td{
+  border-bottom:1px solid #e5e9ed;padding:6px;font-size:11px;text-align:left
+}
+.employee-table th{
+  background:#f7f8fa;color:#5b6570;font-weight:600
+}
+.employee-table td:first-child{text-align:center;width:35px}
+.employee-table td:nth-child(2){width:145px}
+.employee-table td:nth-child(3){width:105px}
+.employee-table td:nth-child(6){width:155px;text-align:center}
+.employee-table input,.employee-table select{padding:6px;font-size:11px}
+
+.marathi-input{font-family:"Noto Sans Devanagari",sans-serif}
+.marathi-name-editor{min-width:310px}
+.marathi-input-row{display:flex;gap:5px;align-items:center}
+.marathi-input-row .marathi-input{flex:1;min-width:0}
+.generate-marathi{
+  flex-shrink:0;border:1px solid #c8ced6;background:#f7f8fa;
+  border-radius:5px;padding:6px 8px;font-size:10px;font-weight:600
+}
+.name-style-controls{
+  display:flex;align-items:center;gap:4px;margin-top:5px
+}
+.name-style-controls button{
+  width:27px;height:25px;padding:0;border:1px solid #cdd4dc;
+  border-radius:5px;background:#fff;display:flex;
+  align-items:center;justify-content:center;color:#39434d
+}
+.name-style-controls button.style-active{
+  background:#202831;color:#fff;border-color:#202831
+}
+.name-style-controls span{
+  min-width:40px;text-align:center;font-size:10px;color:#68737e
 }
 
-function normalizeRoster(data={}) {
-  const base=blankRoster();
-  const duties=Array.isArray(data.duties)&&data.duties.length
-    ? data.duties.map(d=>({
-        key:d.key||createId(),
-        label:d.label||"ड्युटी",
-        abbr:d.abbr||"D",
-        description:d.description||"",
-        login:d.login||"",
-        logout:d.logout||"",
-        includeInSummary: typeof d.includeInSummary === "boolean" ? d.includeInSummary : ["morning","evening","night","nightoff","leave"].includes(d.key),
-        countsAsHoliday: typeof d.countsAsHoliday === "boolean" ? d.countsAsHoliday : HOLIDAY_CODES.has(String(d.abbr||"").trim().toUpperCase())
-      }))
-    : base.duties;
+.row-actions{
+  display:flex;align-items:center;justify-content:center;
+  gap:3px;flex-wrap:wrap
+}
+.insert-btn{
+  border:1px solid #cfd5dd;background:#f7f8fa;
+  border-radius:4px;padding:4px 5px;font-size:9px;color:#3d4751
+}
+.delete-btn{border:0;background:none;color:#b42318;padding:6px}
 
-  const posts=Array.isArray(data.posts)&&data.posts.length
-    ? [...data.posts]
-    : [...DEFAULT_POSTS];
+.duty-head{margin-top:18px}
 
-  const employees=Array.isArray(data.employees)
-    ? data.employees.map(e=>({
-        ...newEmployee(e.group||"अधिपरिचारिका"),
-        ...e,
-        duties:Array.isArray(e.duties)
-          ? [...e.duties,...Array(7).fill("")].slice(0,7)
-          : Array(7).fill(""),
-        customNotes:Array.isArray(e.customNotes)
-          ? [...e.customNotes,...Array(7).fill("")].slice(0,7)
-          : Array(7).fill(""),
-        marathiFontSize:e.marathiFontSize||16,
-        marathiBold:!!e.marathiBold,
-        gender:e.gender||"male",
-        nair:e.nair||"",
-        jama:e.jama||"",
-        ruju:e.ruju||"",
-        leaveType:e.leaveType||"",
-        leaveFrom:e.leaveFrom||"",
-        leaveTo:e.leaveTo||""
-      }))
-    : base.employees;
-
-  const tableSizes={
-    ...base.tableSizes,
-    ...(data.tableSizes||{})
-  };
-
-  const pdfTypography={
-    ...base.pdfTypography,
-    ...(data.pdfTypography||{}),
-    header:{
-      ...base.pdfTypography.header,
-      ...(data.pdfTypography?.header||{})
-    },
-    date:{
-      ...base.pdfTypography.date,
-      ...(data.pdfTypography?.date||{})
-    },
-    dutyCode:{
-      ...base.pdfTypography.dutyCode,
-      ...(data.pdfTypography?.dutyCode||{})
-    },
-    extraValue:{
-      ...base.pdfTypography.extraValue,
-      ...(data.pdfTypography?.extraValue||{})
-    },
-    summaryCount:{
-      ...base.pdfTypography.summaryCount,
-      ...(data.pdfTypography?.summaryCount||{})
-    },
-    staffName:{
-      ...base.pdfTypography.staffName,
-      ...(data.pdfTypography?.staffName||{})
-    }
-  };
-
-  Object.keys(tableSizes).forEach(key=>{
-    const mins={
-      sr:30, roll:40, name:110, day:35, extra:25,
-      row:22, headerRow:30, summaryHeaderRow:28,
-      summaryRow:22, groupRow:24
-    };
-    const maxs={
-      sr:80, roll:100, name:260, day:90, extra:70,
-      row:60, headerRow:70, summaryHeaderRow:65,
-      summaryRow:55, groupRow:60
-    };
-    tableSizes[key]=Math.max(
-      mins[key] ?? 20,
-      Math.min(
-        maxs[key] ?? 100,
-        Number(tableSizes[key]) || base.tableSizes[key]
-      )
-    );
-  });
-
-  return {
-    ...base,
-    ...data,
-    fontFamily:data.fontFamily||base.fontFamily,
-    globalFontSize:Math.max(12,Math.min(24,Number(data.globalFontSize)||base.globalFontSize)),
-    tableSizes,
-    pdfTypography,
-    fontSizes:{
-      ...base.fontSizes,
-      ...(data.fontSizes||{}),
-      headerAll:Number(data.fontSizes?.headerAll)
-        || Number(data.fontSizes?.headerDay)
-        || base.fontSizes.headerAll
-    },
-    duties,
-    posts,
-    employees,
-    savedAt:data.savedAt||null
-  };
+.assignment-table th,.assignment-table td{
+  border-right:1px solid #e0e4e8;border-bottom:1px solid #e0e4e8;
+  padding:6px;font-size:11px;text-align:center
+}
+.assignment-table th{background:#f6f7f9}
+.assignment-table th small{
+  display:block;color:#87919c;font-weight:400;font-size:9px;margin-top:1px
+}
+.assign-name{text-align:left!important;min-width:185px}
+.assignment-table select{padding:5px;font-size:10px}
+.day-note{
+  margin-top:4px!important;padding:3px!important;font-size:9px!important
 }
 
-const SUMMARY_DEFAULT_KEYS = new Set(["morning","evening","night","nightoff","leave"]);
-function isoDateForDay(from, dayIndex){
-  if(!from || dayIndex<0) return "";
-  const d=new Date(`${from}T00:00:00`);
-  d.setDate(d.getDate()+dayIndex);
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+.bottom-actions{
+  padding:16px 20px;display:flex;gap:7px;flex-wrap:wrap
+}
+.upload-btn{font-size:12px}
+.upload-btn input{display:none}
+
+.side-panel{
+  height:max-content;position:sticky;top:90px;padding:16px
+}
+.side-block{
+  padding-bottom:15px;margin-bottom:15px;border-bottom:1px solid #e7eaee
+}
+.side-block:last-child{border:0;margin:0;padding:0}
+.side-block h3{font-size:13px;margin:0 0 7px}
+.side-block p,.side-block li{
+  font-size:11px;line-height:1.7;color:#69737e
 }
 
-function getLeaveCodeForDay(employee, from, dayIndex){
-  if(!employee?.leaveType || !employee?.leaveFrom || !employee?.leaveTo) return "";
-  const date=isoDateForDay(from,dayIndex);
-  if(!date) return "";
-  if(date>=employee.leaveFrom && date<=employee.leaveTo){
-    return employee.leaveType==="ML" ? "ML" : "EL";
+.preview-area{background:#eef1f5;padding:12px}
+.preview-bar{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:11px;color:#66717c;margin-bottom:10px
+}
+.preview-bar b{color:#28313a}
+.paper-stage{overflow:auto;padding:12px}
+
+.paper{
+  width:794px;min-height:1123px;background:#fff;margin:0 auto;
+  padding:37px 32px 35px;color:#111;
+  font-family:"Noto Sans Devanagari",serif
+}
+
+.print-header{text-align:center}
+.print-dept{font-size:18px;font-weight:600;line-height:1.3}
+.print-hospital{font-size:18px;font-weight:600;line-height:1.3}
+.room-box{
+  display:inline-block;margin-top:8px;padding:5px 35px;
+  border:1.4px solid #333;border-radius:8px;font-size:16px;font-weight:600
+}
+.print-title{font-size:15px;font-weight:600;margin-top:12px}
+.print-date{font-size:13px;margin:5px 0 16px}
+.print-date span{margin:0 9px}
+.print-date u{
+  display:inline-block;min-width:75px;text-decoration:none;
+  border-bottom:1px solid #444
+}
+
+.paper-roster,.paper-summary{
+  width:100%;border-collapse:collapse;table-layout:fixed
+}
+.paper-roster th,.paper-roster td,.paper-summary th,.paper-summary td{
+  border:1px solid #111;height:29px;padding:2px;text-align:center;
+  vertical-align:middle;font-size:10.5px;line-height:1.1
+}
+.paper-roster thead th{
+  height:43px;font-weight:600;font-size:11px
+}
+.paper-roster thead th small,.paper-summary thead th small{
+  display:block;font-size:8px;font-weight:400
+}
+.p-sr{width:40px}
+.p-roll{width:58px}
+.p-name{width:165px}
+.p-total{width:42px}
+.group-row td{
+  height:33px!important;font-size:12px!important;font-weight:600
+}
+.print-name{
+  text-align:left!important;padding-left:6px!important;white-space:nowrap
+}
+.print-duty-code{font-weight:700;font-size:12px}
+.print-duty-code small{
+  display:block;font-weight:400;font-size:7px;line-height:1
+}
+
+.paper-summary{margin-top:0}
+.paper-summary thead th{
+  height:37px;font-weight:600
+}
+.paper-summary td,.paper-summary th{height:30px}
+.summary-duty{
+  width:205px;
+  text-align:center!important;
+  vertical-align:middle;
+  padding-left:0!important;
+  padding-right:0!important;
+}
+.summary-abbr{font-size:8px;margin-left:4px;font-weight:400}
+.grand-total th,.grand-total td{font-weight:700}
+
+
+.modal-backdrop{
+  position:fixed;inset:0;background:#0008;z-index:100;
+  display:flex;align-items:center;justify-content:center;padding:20px
+}
+.duty-modal,.ward-modal{
+  background:#fff;width:min(1050px,100%);
+  max-height:90vh;overflow:auto;border-radius:12px;
+  box-shadow:0 20px 70px #0005
+}
+.ward-modal{width:min(600px,100%)}
+.modal-head{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:17px;border-bottom:1px solid #e5e7eb
+}
+.modal-head h2{margin:0;font-size:16px}
+.modal-head p{margin:4px 0 0;color:#737e89;font-size:11px}
+.modal-head>button{border:0;background:none}
+
+.duty-list{padding:14px}
+.duty-header-row{
+  display:grid;grid-template-columns:1.4fr .6fr 1fr 1fr 1fr 40px;
+  gap:7px;margin-bottom:7px;color:#69737e;font-size:10px;font-weight:600
+}
+.duty-row{
+  display:grid;grid-template-columns:1.4fr .6fr 1fr 1fr 1fr 40px;
+  gap:7px;align-items:center;margin-bottom:7px
+}
+.time-input{position:relative}
+.time-input svg{
+  position:absolute;left:8px;top:9px;color:#7b8590
+}
+.time-input input{padding-left:28px}
+
+.ward-modal-body{padding:20px}
+.ward-modal-body label{display:block;font-size:11px;color:#5e6975}
+.ward-modal-body label span{display:block;margin-bottom:5px}
+.template-help{
+  margin-top:15px;padding:12px;background:#f6f7f9;
+  border-radius:7px;color:#68737e;font-size:11px;line-height:1.7
+}
+
+.modal-foot{
+  padding:14px 17px;border-top:1px solid #e5e7eb;
+  display:flex;justify-content:space-between
+}
+.modal-foot button{
+  border:1px solid #cfd5dd;background:#fff;border-radius:7px;
+  padding:8px 11px;display:inline-flex;align-items:center;gap:6px
+}
+.modal-foot .dark-btn{background:#202831;color:#fff}
+
+@media(max-width:1000px){
+  .layout{grid-template-columns:1fr}
+  .side-panel{position:static}
+  .form-grid{grid-template-columns:1fr 1fr}
+  .wide-field{grid-column:span 2}
+}
+@media(max-width:650px){
+  .topbar{
+    height:auto;padding:12px 15px;align-items:flex-start;gap:10px
   }
-  return "";
+  .top-actions{flex-wrap:wrap;justify-content:flex-end}
+  .form-grid{grid-template-columns:1fr}
+  .wide-field{grid-column:auto}
+  .layout{padding:0 8px}
+  .paper-stage{padding:5px}
+  .duty-header-row{display:none}
+  .duty-row{grid-template-columns:1fr 1fr}
 }
 
-function formatDateRange(from,to){
-  if(!from || !to) return "";
-  return `${formatDate(from)} ते ${formatDate(to)}`;
-}
-
-function dutyCode(duty){
-  return String(duty?.abbr||"").trim().toUpperCase();
-}
-
-function isHolidayDuty(duty){
-  return HOLIDAY_CODES.has(dutyCode(duty));
-}
-
-function isLeaveDuty(duty){
-  return LEAVE_CODES.has(dutyCode(duty));
-}
-
-function isSummaryExcludedEmployee(employee){
-  const group=String(employee?.group||"")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g," " );
-
-  return (
-    group.includes("परिसेवक") ||
-    group==="incharge" ||
-    group.includes("in-charge") ||
-    group.includes("in charge")
-  );
-}
-
-function formatDate(value) {
-  if (!value) return "";
-  const [y,m,d]=value.split("-");
-  return `${d}/${m}/${y}`;
-}
-
-function makeDateLabels(from) {
-  if (!from) return DAYS.map(d=>({short:d,date:""}));
-  const start=new Date(`${from}T00:00:00`);
-  return Array.from({length:7},(_,i)=>{
-    const date=new Date(start);
-    date.setDate(start.getDate()+i);
-    return {
-      short:DAY_NAMES[date.getDay()],
-      date:`${String(date.getDate()).padStart(2,"0")}/${String(date.getMonth()+1).padStart(2,"0")}`
-    };
-  });
-}
-
-function cleanMarathiText(text) {
-  return (text||"")
-    .replace(/्(?=\s|$)/g,"")
-    .replace(/\s+/g," ")
-    .trim();
-}
-
-function transliterateName(name) {
-  if (!name?.trim()) return "";
-  if (/[\u0900-\u097F]/.test(name)) return cleanMarathiText(name);
-  try {
-    return cleanMarathiText(Sanscript.t(name,"itrans","devanagari"));
-  } catch {
-    return name;
+@media print{
+  @page{size:A4 portrait;margin:0}
+  html,body{background:#fff!important}
+  .topbar,.side-panel,.tabs,.heading,.form-grid,.section-head,
+  .employee-table-wrap,.assignment-wrap,.bottom-actions,.preview-bar{
+    display:none!important
+  }
+  .layout,.main-panel,.preview-area,.paper-stage{
+    display:block!important;margin:0!important;padding:0!important;
+    border:0!important;box-shadow:none!important;background:#fff!important;
+    max-width:none!important
+  }
+  .paper{
+    width:210mm;min-height:297mm;margin:0;padding:10mm 8.5mm 8mm
   }
 }
 
-function honorific(gender){
-  if(gender==="female") return "श्रीमती.";
-  if(gender==="male") return "श्री.";
-  return "";
+/* Exact shared column geometry: both printable tables use the same 3 fixed columns + 7 day columns + 3 blank trailing columns. */
+.paper-roster,
+.paper-summary {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
 }
 
-function displayStaffName(employee){
-  const name=cleanMarathiText(employee?.marathiName || employee?.englishName || "");
-  if(!name) return "—";
-  const clean=name.replace(/^(श्री\.?|श्रीमती\.?|कु\.?|सौ\.?)\s*/," ").trim();
-  const prefix=honorific(employee?.gender);
-  return prefix ? `${prefix} ${clean}` : clean;
+.paper-roster .col-sr,
+.paper-summary .col-sr { width: 40px; }
+
+.paper-roster .col-roll,
+.paper-summary .col-roll { width: 58px; }
+
+.paper-roster .col-name,
+.paper-summary .col-name { width: 165px; }
+
+.paper-roster .col-day,
+.paper-summary .col-day { width: 49px; }
+
+.paper-roster .col-extra,
+.paper-summary .col-extra { width: 40px; }
+
+.paper-roster th,
+.paper-roster td,
+.paper-summary th,
+.paper-summary td {
+  box-sizing: border-box;
 }
 
-function App({user,onLogout,selectedWardId=null,selectedWardName="",selectedRosterType="regular"}) {
-  const userRole=String(user?.role||"").trim().toLowerCase();
-  const isWardUser=userRole==="ward";
-  const [wardRosterType,setWardRosterType]=useState("regular");
-  const rosterType=isWardUser
-    ? (wardRosterType==="servant" ? "servant" : "regular")
-    : (selectedRosterType==="servant" ? "servant" : "regular");
-  const isServantRoster=rosterType==="servant";
-
-  const cloudWardId=
-    selectedWardId ||
-    user?.ward_id ||
-    user?.ward?.id ||
-    null;
-
-  const isCloudRoster=
-    userRole==="ward" ||
-    !!selectedWardId;
-
-  const [roster,setRoster]=useState(()=>{
-    if(isCloudRoster){
-      return blankRoster();
-    }
-
-    try{
-      const raw=
-        localStorage.getItem("marathi-duty-roster-v7") ||
-        localStorage.getItem("marathi-duty-roster-v6") ||
-        localStorage.getItem("marathi-duty-roster-v5");
-
-      return raw
-        ? normalizeRoster(JSON.parse(raw))
-        : blankRoster();
-
-    }catch{
-      return blankRoster();
-    }
-  });
-
-  const [cloudLoading,setCloudLoading]=useState(isCloudRoster);
-  const [cloudError,setCloudError]=useState("");
-
-  const [tab,setTab]=useState("editor");
-  const [savedMessage,setSavedMessage]=useState(false);
-  const [showDutyManager,setShowDutyManager]=useState(false);
-  const [showPostManager,setShowPostManager]=useState(false);
-  const [showWardTemplates,setShowWardTemplates]=useState(false);
-  const [staffSearch,setStaffSearch]=useState("");
-  const [templateWard,setTemplateWard]=useState("");
-  const paperRef=useRef(null);
-  const [showHistory,setShowHistory]=useState(false);
-  const [showFontSettings,setShowFontSettings]=useState(false);
-
-  useEffect(()=>{
-    if(!isCloudRoster || !cloudWardId){
-      setCloudLoading(false);
-      return;
-    }
-
-    let cancelled=false;
-
-    const loadCloudRoster=async()=>{
-      setCloudLoading(true);
-      setCloudError("");
-
-      try{
-        const res=await fetch(
-          `/api/ward-roster?wardId=${encodeURIComponent(cloudWardId)}`,
-          {
-            method:"GET",
-            credentials:"include"
-          }
-        );
-
-        const data=await res.json().catch(()=>({}));
-
-        if(!res.ok){
-          throw new Error(
-            data.error||"Unable to load ward roster."
-          );
-        }
-
-        if(cancelled){
-          return;
-        }
-
-        const stored=
-          data?.roster &&
-          typeof data.roster==="object"
-            ? data.roster
-            : {};
-
-        let loaded=stored;
-
-        if(stored.__rosterVersion===2){
-          loaded=stored[rosterType] || {};
-        }else if(rosterType==="servant"){
-          loaded={};
-        }
-
-        setRoster(
-          normalizeRoster(loaded)
-        );
-
-      }catch(error){
-        if(!cancelled){
-          setCloudError(
-            error.message||
-            "Unable to load ward roster."
-          );
-        }
-      }finally{
-        if(!cancelled){
-          setCloudLoading(false);
-        }
-      }
-    };
-
-    loadCloudRoster();
-
-    return()=>{
-      cancelled=true;
-    };
-  },[isCloudRoster,cloudWardId,rosterType]);
-
-  useEffect(()=>{
-    if(!isCloudRoster){
-      localStorage.setItem(
-        "marathi-duty-roster-v7",
-        JSON.stringify(roster)
-      );
-    }
-  },[roster,isCloudRoster]);
-
-  const dayLabels=useMemo(()=>makeDateLabels(roster.from),[roster.from]);
-
-  const update=(field,value)=>setRoster(r=>({...r,[field]:value}));
-
-  const editEmployee=(id,field,value)=>setRoster(r=>({
-    ...r,
-    employees:r.employees.map(e=>e.id===id?{...e,[field]:value}:e)
-  }));
-
-  const editEnglish=(id,value)=>setRoster(r=>({
-    ...r,
-    employees:r.employees.map(e=>e.id===id?{
-      ...e,
-      englishName:value,
-      marathiName:value.trim()?transliterateName(value):""
-    }:e)
-  }));
-
-  const generateMarathi=id=>setRoster(r=>({
-    ...r,
-    employees:r.employees.map(e=>e.id===id?{
-      ...e,
-      marathiName:transliterateName(e.englishName)
-    }:e)
-  }));
-
-  const changeFont=(id,delta)=>setRoster(r=>({
-    ...r,
-    employees:r.employees.map(e=>e.id===id?{
-      ...e,
-      marathiFontSize:Math.max(10,Math.min(32,(e.marathiFontSize||16)+delta))
-    }:e)
-  }));
-
-  const toggleBold=id=>setRoster(r=>({
-    ...r,
-    employees:r.employees.map(e=>e.id===id?{
-      ...e,
-      marathiBold:!e.marathiBold
-    }:e)
-  }));
-
-  const editDuty=(id,day,value)=>setRoster(r=>({
-    ...r,
-    employees:r.employees.map(e=>e.id===id?{
-      ...e,
-      duties:e.duties.map((d,i)=>i===day?value:d)
-    }:e)
-  }));
-
-  const editNote=(id,day,value)=>setRoster(r=>({
-    ...r,
-    employees:r.employees.map(e=>e.id===id?{
-      ...e,
-      customNotes:e.customNotes.map((d,i)=>i===day?value:d)
-    }:e)
-  }));
-
-  const addPost=()=>{
-    const name=prompt("नवीन Post नाव भरा:", "नवीन पद");
-    if(!name?.trim()) return;
-
-    const post=name.trim();
-
-    setRoster(r=>({
-      ...r,
-      posts:Array.from(new Set([...getPosts(r),post]))
-    }));
-  };
-
-  const renamePost=(oldPost)=>{
-    const next=prompt("Post चे नवीन नाव:",oldPost);
-    if(!next?.trim() || next.trim()===oldPost) return;
-
-    setRoster(r=>({
-      ...r,
-      posts:getPosts(r).map(p=>p===oldPost?next.trim():p),
-      employees:r.employees.map(e=>
-        e.group===oldPost
-          ? {...e,group:next.trim()}
-          : e
-      )
-    }));
-  };
-
-  const deletePost=(post)=>{
-    if(getPosts(roster).length<=1){
-      alert("किमान एक Post असणे आवश्यक आहे.");
-      return;
-    }
-
-    const users=roster.employees.filter(e=>e.group===post).length;
-
-    if(users && !confirm(
-      `${post} मध्ये ${users} कर्मचारी आहेत. Post delete करायचे का?`
-    )) return;
-
-    setRoster(r=>({
-      ...r,
-      posts:getPosts(r).filter(p=>p!==post),
-      employees:r.employees.map(e=>
-        e.group===post
-          ? {...e,group:getPosts(r).find(p=>p!==post)||"परिसेवक"}
-          : e
-      )
-    }));
-  };
-
-  const addEmployee=group=>setRoster(r=>({
-    ...r,
-    employees:[...r.employees,newEmployee(group)]
-  }));
-
-  const insertEmployee=(index,group)=>setRoster(r=>{
-    const list=[...r.employees];
-    list.splice(index,0,newEmployee(group));
-    return {...r,employees:list};
-  });
-
-  const moveEmployee=(id,direction)=>{
-    setRoster(r=>{
-      const index=r.employees.findIndex(e=>e.id===id);
-      const nextIndex=index+direction;
-      if(index<0 || nextIndex<0 || nextIndex>=r.employees.length)return r;
-      const list=[...r.employees];
-      [list[index],list[nextIndex]]=[list[nextIndex],list[index]];
-      return {...r,employees:list};
-    });
-  };
-
-  const removeEmployee=id=>{
-    if(roster.employees.length<=1){
-      alert("किमान एक कर्मचारी असणे आवश्यक आहे.");
-      return;
-    }
-    setRoster(r=>({
-      ...r,
-      employees:r.employees.filter(e=>e.id!==id)
-    }));
-  };
-
-  const duplicateEmployees=()=>setRoster(r=>({
-    ...r,
-    employees:[
-      ...r.employees,
-      ...r.employees.map(e=>({
-        ...e,
-        id:createId(),
-        duties:Array(7).fill(""),
-        customNotes:Array(7).fill("")
-      }))
-    ]
-  }));
-
-  const addDuty=()=>setRoster(r=>({
-    ...r,
-    duties:[
-      ...r.duties,
-      {
-        key:createId(),
-        label:"नवीन ड्युटी",
-        abbr:"D",
-        description:"",
-        login:"",
-        logout:"",
-        includeInSummary:false
-      }
-    ]
-  }));
-
-  const updateDutyDef=(key,field,value)=>setRoster(r=>({
-    ...r,
-    duties:r.duties.map(d=>d.key===key?{...d,[field]:value}:d)
-  }));
-
-  const deleteDuty=key=>{
-    if(roster.duties.length<=1){
-      alert("किमान एक duty असणे आवश्यक आहे.");
-      return;
-    }
-    setRoster(r=>({
-      ...r,
-      duties:r.duties.filter(d=>d.key!==key),
-      employees:r.employees.map(e=>({
-        ...e,
-        duties:e.duties.map(v=>v===key?"":v)
-      }))
-    }));
-  };
-
-  const wardTemplateKey=ward=>{
-    const clean=(ward||"Ward").trim().toLowerCase();
-    return `marathi-duty-template:${clean}`;
-  };
-
-  const saveWardTemplate=()=>{
-    const ward=roster.ward.trim();
-    if(!ward){
-      alert("कृपया Ward / Room नाव भरा.");
-      return;
-    }
-
-    const template={
-      ward,
-      hospital:roster.hospital,
-      department:roster.department,
-      title:roster.title,
-      posts:getPosts(roster),
-      duties:roster.duties,
-      employees:roster.employees.map(e=>({
-        ...e,
-        duties:Array(7).fill(""),
-        customNotes:Array(7).fill("")
-      })),
-      savedAt:new Date().toISOString()
-    };
-
-    localStorage.setItem(
-      wardTemplateKey(ward),
-      JSON.stringify(template)
-    );
-
-    alert(`Ward template saved for ${ward}.`);
-  };
-
-  const loadWardTemplate=ward=>{
-    const target=(ward||roster.ward).trim();
-    if(!target){
-      alert("कृपया Ward / Room निवडा.");
-      return;
-    }
-
-    const raw=localStorage.getItem(wardTemplateKey(target));
-
-    if(!raw){
-      alert(`Ward ${target} साठी saved template सापडले नाही.`);
-      return;
-    }
-
-    try{
-      const template=normalizeRoster(JSON.parse(raw));
-      setRoster(r=>({
-        ...r,
-        hospital:template.hospital||r.hospital,
-        department:template.department||r.department,
-        ward:template.ward||target,
-        title:template.title||r.title,
-        posts:template.posts||getPosts(r),
-        duties:template.duties,
-        employees:template.employees.map(e=>({
-          ...e,
-          duties:Array(7).fill(""),
-          customNotes:Array(7).fill("")
-        })),
-        from:"",
-        to:"",
-        savedAt:null
-      }));
-      setShowWardTemplates(false);
-      setTab("editor");
-    }catch{
-      alert("Ward template वाचता आले नाही.");
-    }
-  };
-
-  const startNextWeek=()=>{
-    setRoster(r=>({
-      ...r,
-      from:"",
-      to:"",
-      employees:r.employees.map(e=>({
-        ...e,
-        // New week: clear only week-specific daily entries/notes and leave range.
-        // Keep staff identity, post, font settings, and नैर/जमा/रुजू values.
-        duties:Array(7).fill(""),
-        customNotes:Array(7).fill(""),
-        leaveType:"",
-        leaveFrom:"",
-        leaveTo:""
-      })),
-      savedAt:null
-    }));
-    setTab("editor");
-  };
-
-  const getHistory=()=>{
-    try{
-      return JSON.parse(localStorage.getItem("marathi-duty-history-v7")||"[]");
-    }catch{
-      return [];
-    }
-  };
-
-  const saveWeeklyHistory=()=>{
-    if(!roster.from){
-      alert("कृपया From Date निवडा.");
-      return;
-    }
-
-    const history=getHistory();
-    const item={
-      id:createId(),
-      savedAt:new Date().toISOString(),
-      from:roster.from,
-      to:roster.to,
-      ward:roster.ward,
-      department:roster.department,
-      hospital:roster.hospital,
-      title:roster.title,
-      employees:roster.employees,
-      duties:roster.duties
-    };
-
-    const filtered=history.filter(
-      h=>!(h.ward===item.ward && h.from===item.from)
-    );
-
-    filtered.unshift(item);
-
-    localStorage.setItem(
-      "marathi-duty-history-v7",
-      JSON.stringify(filtered.slice(0,100))
-    );
-
-    alert("Weekly roster saved to history.");
-  };
-
-  const loadHistoryItem=item=>{
-    setRoster(normalizeRoster(item));
-    setShowHistory(false);
-    setTab("editor");
-  };
-
-  const deleteHistoryItem=id=>{
-    const next=getHistory().filter(h=>h.id!==id);
-    localStorage.setItem(
-      "marathi-duty-history-v7",
-      JSON.stringify(next)
-    );
-  };
-
-  const nextWeekFromDate=()=>{
-    if(!roster.from){
-      startNextWeek();
-      return;
-    }
-
-    const d=new Date(`${roster.from}T00:00:00`);
-    d.setDate(d.getDate()+7);
-
-    const end=new Date(d);
-    end.setDate(end.getDate()+6);
-
-    const iso=x=>
-      `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
-
-    setRoster(r=>({
-      ...r,
-      from:iso(d),
-      to:iso(end),
-      employees:r.employees.map(e=>({
-        ...e,
-        duties:Array(7).fill(""),
-        customNotes:Array(7).fill("")
-      })),
-      savedAt:null
-    }));
-
-    setTab("editor");
-  };
-
-  const save=async()=>{
-    const next={
-      ...roster,
-      savedAt:new Date().toISOString()
-    };
-
-    setRoster(next);
-
-    if(isCloudRoster && cloudWardId){
-      try{
-        setCloudError("");
-
-        const existingRes=await fetch(
-          `/api/ward-roster?wardId=${encodeURIComponent(cloudWardId)}`,
-          {method:"GET",credentials:"include"}
-        );
-        const existingData=await existingRes.json().catch(()=>({}));
-        if(!existingRes.ok){
-          throw new Error(existingData.error||"Unable to load existing ward roster.");
-        }
-
-        const existingStored=
-          existingData?.roster &&
-          typeof existingData.roster==="object"
-            ? existingData.roster
-            : {};
-
-        const combined=
-          existingStored.__rosterVersion===2
-            ? {...existingStored,[rosterType]:next}
-            : rosterType==="regular"
-              ? {__rosterVersion:2,regular:next,servant:{}}
-              : {__rosterVersion:2,regular:existingStored,servant:next};
-
-        const res=await fetch(
-          "/api/ward-roster",
-          {
-            method:"POST",
-            credentials:"include",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({wardId:cloudWardId,roster:combined})
-          }
-        );
-
-        const data=await res.json().catch(()=>({}));
-
-        if(!res.ok){
-          throw new Error(
-            data.error||
-            "Unable to save ward roster."
-          );
-        }
-
-      }catch(error){
-        setCloudError(
-          error.message||
-          "Unable to save ward roster."
-        );
-        return;
-      }
-    }else{
-      localStorage.setItem(
-        "marathi-duty-roster-v7",
-        JSON.stringify(next)
-      );
-    }
-
-    setSavedMessage(true);
-    setTimeout(()=>{
-      setSavedMessage(false);
-    },1800);
-  };
-
-  const newRoster=()=>{
-    if(confirm("नवीन रिकामी ड्युटी यादी तयार करायची आहे का?")){
-      setRoster(blankRoster());
-      setTab("editor");
-    }
-  };
-
-  const backup=()=>{
-    const blob=new Blob(
-      [JSON.stringify(roster,null,2)],
-      {type:"application/json"}
-    );
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.download=`duty-roster-${roster.from||"new"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const restore=e=>{
-    const file=e.target.files?.[0];
-    if(!file)return;
-
-    const reader=new FileReader();
-    reader.onload=()=>{
-      try{
-        setRoster(normalizeRoster(JSON.parse(reader.result)));
-        setTab("editor");
-      }catch{
-        alert("ही वैध roster JSON फाइल नाही.");
-      }
-    };
-    reader.readAsText(file);
-    e.target.value="";
-  };
-
-  const print=()=>{
-    setTab("preview");
-    setTimeout(()=>window.print(),300);
-  };
-
-  const generatePdf=async()=>{
-    if(!paperRef.current)return;
-
-    try{
-      const canvas=await html2canvas(
-        paperRef.current,
-        {
-          scale:2.5,
-          backgroundColor:"#fff",
-          useCORS:true,
-          logging:false,
-          windowWidth:paperRef.current.scrollWidth
-        }
-      );
-
-      const pdf=new jsPDF({
-        orientation:"portrait",
-        unit:"mm",
-        format:"a4"
-      });
-
-      const margin=7;
-      const width=210-margin*2;
-      const pxPerMm=canvas.width/width;
-      const pagePx=Math.floor((297-margin*2)*pxPerMm);
-
-      let offset=0;
-      let page=0;
-
-      while(offset<canvas.height){
-        const h=Math.min(pagePx,canvas.height-offset);
-
-        const c=document.createElement("canvas");
-        c.width=canvas.width;
-        c.height=h;
-
-        const ctx=c.getContext("2d");
-        ctx.fillStyle="#fff";
-        ctx.fillRect(0,0,c.width,c.height);
-
-        ctx.drawImage(
-          canvas,
-          0,offset,canvas.width,h,
-          0,0,canvas.width,h
-        );
-
-        if(page++)pdf.addPage();
-
-        pdf.addImage(
-          c.toDataURL("image/png"),
-          "PNG",
-          margin,
-          margin,
-          width,
-          h/pxPerMm
-        );
-
-        offset+=h;
-      }
-
-      pdf.save(`duty-roster-${roster.from||"a4"}.pdf`);
-    }catch(error){
-      console.error(error);
-      alert("PDF तयार करताना समस्या आली.");
-    }
-  };
-
-  if(cloudLoading){
-    return (
-      <div
-        className="login-loading"
-        style={{minHeight:"100vh"}}
-      >
-        Loading ward roster...
-      </div>
-    );
+.paper-summary .summary-duty {
+  width:auto;
+  text-align:center!important;
+  vertical-align:middle;
+  padding-left:0!important;
+  padding-right:0!important;
+}
+
+.paper-summary {
+  margin-top: 0;
+}
+
+.template-load-row{
+  display:flex;
+  gap:7px;
+  align-items:center;
+}
+.template-load-row input{flex:1}
+
+.saved-template-title{
+  margin-top:18px;
+  margin-bottom:7px;
+  font-size:11px;
+  font-weight:700;
+  color:#56616d;
+}
+.saved-template-list{
+  border:1px solid #e1e5e9;
+  border-radius:7px;
+  overflow:hidden;
+}
+.saved-template-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:10px 11px;
+  border-bottom:1px solid #e5e8ec;
+}
+.saved-template-row:last-child{border-bottom:0}
+.saved-template-row b{
+  display:block;
+  font-size:12px;
+}
+.saved-template-row small{
+  display:block;
+  margin-top:2px;
+  color:#7b8590;
+  font-size:9px;
+}
+.template-row-actions{
+  display:flex;
+  gap:5px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.template-row-actions button{
+  border:1px solid #cfd5dd;
+  background:#fff;
+  border-radius:5px;
+  padding:5px 8px;
+  font-size:10px;
+}
+.template-row-actions .danger-text{color:#b42318}
+.empty-template{
+  padding:18px;
+  text-align:center;
+  border:1px dashed #cfd5dd;
+  border-radius:7px;
+  color:#7a8490;
+  font-size:11px;
+}
+.history-modal{width:min(700px,100%)}
+
+.post-list-note{
+  font-size:10px;
+  color:#707b86;
+  margin-top:8px;
+}
+
+.staff-toolbar{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:10px;
+  width:100%;
+}
+.staff-search{
+  position:relative;
+  width:220px;
+  flex-shrink:0;
+}
+.staff-search input{
+  padding-right:30px;
+  font-size:11px;
+}
+.clear-search{
+  position:absolute;
+  right:5px;
+  top:5px;
+  width:25px;
+  height:25px;
+  border:0;
+  background:transparent;
+  color:#737e89;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.move-btn{
+  min-width:25px;
+  font-weight:700;
+}
+@media(max-width:850px){
+  .staff-toolbar{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .staff-search{width:100%}
+}
+
+.date-hint{
+  margin:-4px 20px 8px;
+  font-size:10px;
+  color:#7a8490;
+}
+
+/* v12: Marathi-first typography */
+:root{--marathi-font:"Mukta","Noto Sans Devanagari","Nirmala UI",sans-serif;}
+html,body,#root{font-family:var(--marathi-font);}
+body,button,input,select,textarea{font-family:var(--marathi-font);}
+.paper-roster,.paper-summary,.paper-roster th,.paper-roster td,.paper-summary th,.paper-summary td{font-family:var(--marathi-font);}
+.paper-roster thead th,.paper-summary thead th{font-weight:700;}
+.paper-roster .name-cell,.paper-roster .marathi-name{font-weight:700;}
+.paper-summary .summary-duty{font-weight:700;text-align:center!important;vertical-align:middle;}
+.paper-summary .summary-abbr{font-weight:600;margin-left:3px;}
+.paper-roster small,.paper-summary small{font-family:var(--marathi-font);font-weight:500;}
+@media print{html,body,#root,.paper-roster,.paper-summary,.paper-roster th,.paper-roster td,.paper-summary th,.paper-summary td{font-family:var(--marathi-font)!important;}}
+
+/* v13 typography, centered summary and login */
+.paper-summary .summary-duty,
+.paper-summary .summary-duty *{text-align:center !important;vertical-align:middle !important;}
+.font-modal{width:min(650px,100%)}
+.font-options{display:grid;gap:9px;padding:16px}
+.font-option{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border:1px solid #d8dee5;background:#fff;border-radius:9px;padding:11px 13px;cursor:pointer}
+.font-option:hover{border-color:#9aa7b5}
+.font-option.selected{border:2px solid #34495e;background:#f7f9fb}
+.font-option-name{font-size:12px;font-weight:700;color:#394451}
+.font-option-sample{font-size:19px;font-weight:600;color:#202833}
+.font-preview{margin:0 16px 14px;padding:13px;border:1px solid #e0e5ea;border-radius:8px;background:#fafbfc;font-size:18px;line-height:1.7}
+.logged-user{font-size:11px;font-weight:700;color:#53606d;padding:0 4px}
+.logout-btn{border-color:#d6b8b8!important;color:#8a2e2e!important}
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#eef2f5,#f9fafb);padding:20px}
+.login-card{width:min(410px,100%);background:#fff;border:1px solid #dce2e8;border-radius:14px;box-shadow:0 14px 45px rgba(30,45,60,.10);padding:28px}
+.login-logo{font-size:22px;font-weight:800;color:#263746;margin-bottom:5px}
+.login-card h1{font-size:21px;margin:0 0 5px;color:#27333e}
+.login-card p{font-size:12px;color:#6d7883;margin:0 0 20px}
+.login-card label{display:block;margin:12px 0}
+.login-card label span{display:block;font-size:11px;font-weight:700;color:#52606d;margin-bottom:5px}
+.login-card input{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid #ccd4dc;border-radius:7px;font-size:13px}
+.login-card input:focus{outline:0;border-color:#6d7f91;box-shadow:0 0 0 2px rgba(109,127,145,.12)}
+.login-btn{width:100%;justify-content:center;margin-top:10px}
+.login-error{background:#fff1f1;border:1px solid #f0c4c4;color:#9a3030;border-radius:6px;padding:8px;font-size:11px}
+.login-note{display:block;margin-top:16px;color:#89939d;font-size:9px;line-height:1.5}
+.login-loading{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:var(--marathi-font);color:#56616d}
+@media print{.logged-user,.logout-btn{display:none!important}}
+
+
+/* FINAL v13.1 - clean Marathi font + centered A4 duty summary */
+.paper{
+  font-family:"Mukta","Noto Sans Devanagari","Tiro Devanagari Marathi","Nirmala UI",sans-serif;
+}
+
+.paper-roster,
+.paper-summary{
+  font-family:"Mukta","Noto Sans Devanagari","Tiro Devanagari Marathi","Nirmala UI",sans-serif;
+}
+
+.paper-summary .summary-duty{
+  text-align:center !important;
+  vertical-align:middle !important;
+  padding:0 !important;
+}
+
+.paper-summary .summary-duty *{
+  text-align:center !important;
+}
+
+.paper-summary .summary-abbr{
+  display:inline;
+  margin-left:4px;
+  font-weight:600;
+}
+
+@media print{
+  .paper,
+  .paper-roster,
+  .paper-summary,
+  .paper-roster th,
+  .paper-roster td,
+  .paper-summary th,
+  .paper-summary td{
+    font-family:"Mukta","Noto Sans Devanagari","Tiro Devanagari Marathi","Nirmala UI",sans-serif !important;
   }
 
-  if(cloudError){
-    return (
-      <div
-        className="login-screen"
-        style={{minHeight:"100vh"}}
-      >
-        <div className="login-card">
-          <h2>Ward Roster Error</h2>
-
-          <p style={{
-            color:"#b42318",
-            marginBottom:16
-          }}>
-            {cloudError}
-          </p>
-
-          {selectedWardId&&(
-            <button
-              className="dark-btn"
-              onClick={()=>{
-                sessionStorage.removeItem("admin_selected_ward_id");
-                sessionStorage.removeItem("admin_selected_ward_name");
-                sessionStorage.removeItem("admin_selected_roster_type");
-                window.location.href="/";
-              }}
-            >
-              Back to Ward Manager
-            </button>
-          )}
-        </div>
-      </div>
-    );
+  .paper-summary .summary-duty{
+    text-align:center !important;
+    vertical-align:middle !important;
   }
-
-  return <div className="app" style={{"--marathi-font":fontStack(roster.fontFamily),"--ui-scale":(roster.globalFontSize||16)/16,"--ui-inverse-scale":16/(roster.globalFontSize||16)}}>
-
-    <header className="topbar">
-      <div>
-        <div className="brand">Duty Roster</div>
-        <div className="brand-sub">
-          Marathi Hospital Weekly Duty List
-        </div>
-      </div>
-
-      <div className="top-actions">
-        <span className="logged-user">{user?.name||user?.username}</span>
-
-        {isWardUser && (
-          <>
-            <button
-              onClick={()=>setWardRosterType("regular")}
-              className={wardRosterType==="regular" ? "dark-btn" : ""}
-            >
-              Regular Duty List
-            </button>
-
-            <button
-              onClick={()=>setWardRosterType("servant")}
-              className={wardRosterType==="servant" ? "dark-btn" : ""}
-            >
-              Servant Duty List
-            </button>
-          </>
-        )}
-
-        <button onClick={onLogout} className="logout-btn">
-          <LogOut size={16}/>
-          Logout
-        </button>
-
-        {selectedWardId&&(
-          <button
-            onClick={()=>{
-              sessionStorage.removeItem("admin_selected_ward_id");
-              sessionStorage.removeItem("admin_selected_ward_name");
-              window.location.href="/";
-            }}
-          >
-            <FolderOpen size={16}/>
-            Back to Ward Manager
-          </button>
-        )}
-
-        <button onClick={()=>setShowFontSettings(true)}>
-          <Settings2 size={16}/>
-          Font Settings
-        </button>
-
-        <button
-          onClick={save}
-          className={savedMessage?"saved-btn":""}
-        >
-          {savedMessage?<Check size={16}/>:<Save size={16}/>}
-          {savedMessage?"Saved":"Save"}
-        </button>
-
-        <button onClick={print}>
-          <Printer size={16}/>
-          Print
-        </button>
-
-        <button onClick={generatePdf} className="dark-btn">
-          <FileText size={16}/>
-          A4 PDF
-        </button>
-      </div>
-    </header>
-
-    <main className="layout">
-
-      <section className="main-panel">
-
-        <div className="tabs">
-          <button
-            className={tab==="editor"?"active":""}
-            onClick={()=>setTab("editor")}
-          >
-            Roster Editor
-          </button>
-
-          <button
-            className={tab==="preview"?"active":""}
-            onClick={()=>setTab("preview")}
-          >
-            A4 Preview
-          </button>
-        </div>
-
-        {tab==="editor"?<>
-
-          <div className="heading">
-            <h1>{isServantRoster ? "Servant Duty List" : "Create Duty List"}</h1>
-            <p>
-              Ward template वापरून पुढील आठवड्यात staff list पुन्हा वापरता येईल.
-            </p>
-          </div>
-
-          <div className="form-grid">
-
-            <Field
-              label="Hospital Name"
-              value={roster.hospital}
-              onChange={v=>update("hospital",v)}
-              sizeKey="hospital"
-              fontSizes={roster.fontSizes}
-              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
-            />
-
-            <Field
-              label="Department Name"
-              value={roster.department}
-              onChange={v=>update("department",v)}
-              sizeKey="department"
-              fontSizes={roster.fontSizes}
-              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
-            />
-
-            <Field
-              label="Ward / Room"
-              value={roster.ward}
-              onChange={v=>update("ward",v)}
-              sizeKey="ward"
-              fontSizes={roster.fontSizes}
-              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
-            />
-
-            <Field
-              label="Roster Title"
-              value={roster.title}
-              wide
-              onChange={v=>update("title",v)}
-              sizeKey="title"
-              fontSizes={roster.fontSizes}
-              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
-            />
-
-            <Field
-              label="From Date"
-              type="date"
-              value={roster.from}
-              sizeKey="date"
-              fontSizes={roster.fontSizes}
-              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
-              onChange={v=>{
-                if(!v){
-                  update("from","");
-                  update("to","");
-                  return;
-                }
-                const d=new Date(`${v}T00:00:00`);
-                d.setDate(d.getDate()+6);
-                const iso=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
-                setRoster(r=>({...r,from:v,to:iso(d)}));
-              }}
-            />
-
-            <Field
-              label="To Date"
-              type="date"
-              value={roster.to}
-              onChange={v=>update("to",v)}
-              sizeKey="date"
-              fontSizes={roster.fontSizes}
-              onSizeChange={(key,v)=>setRoster(r=>({...r,fontSizes:{...r.fontSizes,[key]:v}}))}
-            />
-
-          </div>
-
-          <A4SizeControls
-            fontSizes={roster.fontSizes}
-            onChange={(key,v)=>setRoster(r=>({
-              ...r,
-              fontSizes:{
-                ...r.fontSizes,
-                [key]:Math.max(7,Math.min(40,Number(v)||r.fontSizes?.[key]||12))
-              }
-            }))}
-          />
-
-          <TableSizeControls
-            tableSizes={roster.tableSizes}
-            isServant={isServantRoster}
-            onChange={(key,v)=>setRoster(r=>({
-              ...r,
-              tableSizes:{
-                ...r.tableSizes,
-                [key]:v
-              }
-            }))}
-          />
-
-          <div className="date-hint">
-            From Date निवडल्यानंतर To Date आपोआप 7 दिवसांच्या roster प्रमाणे भरली जाईल.
-          </div>
-
-          <div className="section-head">
-
-            <div>
-              <h2>Employees / कर्मचारी</h2>
-              <p>
-                प्रत्येक नावाच्या Before / After बटणाने नवीन staff कुठेही घालता येईल.
-              </p>
-            </div>
-
-            <div className="staff-toolbar">
-
-              <div className="staff-search">
-                <input
-                  value={staffSearch}
-                  onChange={e=>setStaffSearch(e.target.value)}
-                  placeholder="कर्मचारी शोधा..."
-                />
-                {staffSearch && (
-                  <button
-                    className="clear-search"
-                    onClick={()=>setStaffSearch("")}
-                  >
-                    <X size={13}/>
-                  </button>
-                )}
-              </div>
-
-              <div className="inline-actions">
-
-              <button onClick={()=>addEmployee("कक्षसेवक")}>
-                <Plus size={15}/>
-                कक्षसेवक
-              </button>
-
-              <button onClick={()=>addEmployee("सफाईगार")}>
-                <Plus size={15}/>
-                सफाईगार
-              </button>
-
-              <button onClick={()=>setShowPostManager(true)}>
-                <Settings2 size={15}/>
-                Manage Posts
-              </button>
-
-              <button onClick={addPost}>
-                <Plus size={15}/>
-                Custom Post
-              </button>
-
-              <button onClick={duplicateEmployees}>
-                <Copy size={15}/>
-                Duplicate
-              </button>
-
-              <button onClick={saveWardTemplate}>
-                <Save size={15}/>
-                Save Ward Template
-              </button>
-
-              <button onClick={()=>setShowWardTemplates(true)}>
-                <FolderOpen size={15}/>
-                Ward Templates
-              </button>
-
-              <button onClick={nextWeekFromDate}>
-                <CalendarDays size={15}/>
-                Next Week
-              </button>
-
-              <button onClick={()=>setShowHistory(true)}>
-                <FolderOpen size={15}/>
-                Weekly History
-              </button>
-
-              </div>
-            </div>
-          </div>
-
-          <div className="employee-table-wrap">
-
-            <table className="employee-table">
-
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>वर्ग</th>
-                  {!isServantRoster && <th>Roll No.</th>}
-                  <th>लिंग / Gender</th>
-                  <th>English Name</th>
-                  <th>मराठी नाव / Style</th>
-                  {!isServantRoster && <th>नैर</th>}
-                  <th>जमा</th>
-                  {!isServantRoster && <th>रुजू</th>}
-                  <th>Insert / Delete</th>
-                </tr>
-              </thead>
-
-              <tbody>
-
-                {roster.employees
-                  .map((e,i)=>({...e,__index:i}))
-                  .filter(e=>{
-                    const q=staffSearch.trim().toLowerCase();
-                    if(!q)return true;
-                    return [
-                      e.englishName,e.marathiName,e.rollNo,e.group
-                    ].some(v=>(v||"").toLowerCase().includes(q));
-                  })
-                  .map(e=><tr key={e.id}>
-
-                  <td>{e.__index+1}</td>
-
-                  <td>
-                    <select
-                      value={e.group}
-                      onChange={x=>editEmployee(e.id,"group",x.target.value)}
-                    >
-                      {getPosts(roster).map(g=><option key={g}>{g}</option>)}
-                    </select>
-                  </td>
-
-                  {!isServantRoster && (
-                    <td>
-                      <input
-                        value={e.rollNo}
-                        placeholder="2/114"
-                        onChange={x=>editEmployee(e.id,"rollNo",x.target.value)}
-                      />
-                    </td>
-                  )}
-
-                  <td>
-                    <select
-                      value={e.gender||"male"}
-                      onChange={x=>editEmployee(e.id,"gender",x.target.value)}
-                      title="Gender / लिंग"
-                    >
-                      <option value="male">पुरुष</option>
-                      <option value="female">स्त्री</option>
-                      <option value="other">इतर</option>
-                    </select>
-                  </td>
-
-                  <td>
-                    <input
-                      value={e.englishName}
-                      placeholder="Sagar Walhekar"
-                      onChange={x=>editEnglish(e.id,x.target.value)}
-                    />
-                  </td>
-
-                  <td>
-
-                    <div className="marathi-name-editor">
-
-                      <div className="marathi-input-row">
-
-                        <input
-                          className="marathi-input"
-                          value={e.marathiName}
-                          placeholder="सागर वाल्हेकर"
-                          style={{
-                            fontSize:`${e.marathiFontSize||16}px`,
-                            fontWeight:e.marathiBold?700:400
-                          }}
-                          onChange={x=>editEmployee(e.id,"marathiName",x.target.value)}
-                        />
-
-                        <button
-                          className="generate-marathi"
-                          onClick={()=>generateMarathi(e.id)}
-                        >
-                          मराठी
-                        </button>
-
-                      </div>
-
-                      <div className="name-style-controls">
-
-                        <button
-                          className={e.marathiBold?"style-active":""}
-                          title="Bold"
-                          onClick={()=>toggleBold(e.id)}
-                        >
-                          <Bold size={15}/>
-                        </button>
-
-                        <button
-                          title="Decrease font size"
-                          onClick={()=>changeFont(e.id,-1)}
-                        >
-                          <Minus size={14}/>
-                        </button>
-
-                        <span>{e.marathiFontSize||16}px</span>
-
-                        <button
-                          title="Increase font size"
-                          onClick={()=>changeFont(e.id,1)}
-                        >
-                          <PlusIcon size={14}/>
-                        </button>
-
-                      </div>
-
-                      <div className="leave-inline-controls">
-                        <select
-                          value={e.leaveType||""}
-                          onChange={x=>editEmployee(e.id,"leaveType",x.target.value)}
-                          title="EL / ML leave range"
-                        >
-                          <option value="">Leave: None</option>
-                          <option value="EL">EL — Earn Leave</option>
-                          <option value="ML">ML — Medical Leave</option>
-                        </select>
-                        <input
-                          type="date"
-                          value={e.leaveFrom||""}
-                          onChange={x=>editEmployee(e.id,"leaveFrom",x.target.value)}
-                          title="Leave From"
-                        />
-                        <span>to</span>
-                        <input
-                          type="date"
-                          value={e.leaveTo||""}
-                          onChange={x=>editEmployee(e.id,"leaveTo",x.target.value)}
-                          title="Leave To"
-                        />
-                      </div>
-                      {e.leaveType && e.leaveFrom && e.leaveTo &&
-                        <div className="leave-range-preview">
-                          {e.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} {formatDateRange(e.leaveFrom,e.leaveTo)}
-                        </div>
-                      }
-                    </div>
-
-                  </td>
-
-                  {!isServantRoster && <td><input value={e.nair||""} placeholder="" onChange={x=>editEmployee(e.id,"nair",x.target.value)} />
-                  </td>}
-                  <td><input value={e.jama||""} placeholder="" onChange={x=>editEmployee(e.id,"jama",x.target.value)} /></td>
-                  {!isServantRoster && <td><input value={e.ruju||""} placeholder="" onChange={x=>editEmployee(e.id,"ruju",x.target.value)} />
-                  </td>}
-
-                  <td>
-
-                    <div className="row-actions">
-
-                      <button
-                        className="insert-btn move-btn"
-                        title="Move staff up"
-                        onClick={()=>moveEmployee(e.id,-1)}
-                      >
-                        ↑
-                      </button>
-
-                      <button
-                        className="insert-btn move-btn"
-                        title="Move staff down"
-                        onClick={()=>moveEmployee(e.id,1)}
-                      >
-                        ↓
-                      </button>
-
-                      <button
-                        className="insert-btn"
-                        title="Add staff before"
-                        onClick={()=>insertEmployee(e.__index,e.group)}
-                      >
-                        + Before
-                      </button>
-
-                      <button
-                        className="insert-btn"
-                        title="Add staff after"
-                        onClick={()=>insertEmployee(e.__index+1,e.group)}
-                      >
-                        + After
-                      </button>
-
-                      <button
-                        className="delete-btn"
-                        title="Delete staff"
-                        onClick={()=>removeEmployee(e.id)}
-                      >
-                        <Trash2 size={16}/>
-                      </button>
-
-                    </div>
-
-                  </td>
-
-                </tr>)}
-
-              </tbody>
-
-            </table>
-          </div>
-
-          <div className="section-head duty-head">
-
-            <div>
-              <h2>Duty Assignment / ड्युटी</h2>
-              <p>
-                M = सकाळ, E = दुपार, N = रापा, NO = रासू, L = रजा. EL/ML leave range ही फक्त नावाच्या row मध्ये माहिती म्हणून दिसेल; duty cells आपोआप बदलणार नाहीत.
-              </p>
-            </div>
-
-            <button
-              onClick={()=>setShowDutyManager(true)}
-              className="manage-duty"
-            >
-              <Settings2 size={15}/>
-              Manage Duties
-            </button>
-
-          </div>
-
-          <div className="assignment-wrap">
-
-            <table className="assignment-table">
-
-              <thead>
-                <tr>
-                  <th className="assign-name">नाव</th>
-
-                  {dayLabels.map((d,i)=>
-                    <th key={i}>
-                      {d.short}
-                      <small>{d.date}</small>
-                    </th>
-                  )}
-                </tr>
-              </thead>
-
-              <tbody>
-
-                {roster.employees.map(e=><tr key={e.id}>
-
-                  <td className="assign-name">
-                    {displayStaffName(e)}
-                  </td>
-
-                  {e.duties.map((v,i)=>{
-                    return <td key={i}>
-                      <select
-                        value={v}
-                        onChange={x=>editDuty(e.id,i,x.target.value)}
-                      >
-                        <option value="">—</option>
-                        {roster.duties.map(d=>
-                          <option value={d.key} key={d.key}>
-                            {d.abbr} — {d.label}
-                          </option>
-                        )}
-                      </select>
-                      {v &&
-                        <input
-                          className="day-note"
-                          placeholder="note"
-                          value={e.customNotes[i]||""}
-                          onChange={x=>editNote(e.id,i,x.target.value)}
-                        />
-                      }
-                    </td>;
-                  })}
-
-                </tr>)}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-          <div className="bottom-actions">
-
-            <button onClick={newRoster}>
-              <RotateCcw size={16}/>
-              New Roster
-            </button>
-
-            <button onClick={saveWeeklyHistory}>
-              <Save size={16}/>
-              Save Week History
-            </button>
-
-            <button onClick={backup}>
-              <Download size={16}/>
-              Backup JSON
-            </button>
-
-            <label className="upload-btn">
-              <Upload size={16}/>
-              Restore JSON
-              <input
-                type="file"
-                accept=".json"
-                onChange={restore}
-              />
-            </label>
-
-          </div>
-
-        </>:<>
-
-          <div className="preview-area">
-
-            <div className="preview-bar">
-
-              <div>
-                <b>A4 Portrait Preview</b>
-                <span>
-                  {" "}— रवि नंतर एकूण column नाही आणि A4 च्या शेवटी duty-code legend नाही.
-                </span>
-              </div>
-
-              <button
-                className="dark-btn"
-                onClick={generatePdf}
-              >
-                <FileDown size={16}/>
-                Generate PDF
-              </button>
-
-            </div>
-
-            <div className="paper-stage">
-
-              <PrintableRoster
-                ref={paperRef}
-                roster={roster}
-                labels={dayLabels}
-                rosterType={rosterType}
-              />
-
-            </div>
-
-          </div>
-
-        </>}
-
-      </section>
-
-      <aside className="side-panel">
-
-        <div className="side-block">
-          <h3>Ward Templates</h3>
-          <p>
-            Ward 26 ची staff list एकदा Save Ward Template करा.
-            पुढील आठवड्यात Ward Templates मधून ती पुन्हा load करा.
-          </p>
-        </div>
-
-        <div className="side-block">
-          <h3>Posts / पदे</h3>
-          <p>
-            परिसेवक, अधिपरिचारिका, कक्षसेवक आणि सफाईगार
-            default आहेत. Manage Posts मधून custom post जोडता येईल.
-          </p>
-        </div>
-
-        <div className="side-block">
-          <h3>Staff insertion</h3>
-          <p>
-            कोणत्याही नावाच्या row वर <b>+ Before</b> किंवा
-            <b> + After</b> वापरून नवीन कर्मचारी घालता येईल.
-          </p>
-        </div>
-
-        <div className="side-block">
-          <h3>Summary</h3>
-          <p>
-            Summary मध्ये सोम ते रवि हे main table प्रमाणेच
-            त्याच columns खाली येतात. शेवटी एकूण column नाही.
-          </p>
-        </div>
-
-      </aside>
-
-    </main>
-
-    {showDutyManager &&
-      <DutyManager
-        roster={roster}
-        onClose={()=>setShowDutyManager(false)}
-        onAdd={addDuty}
-        onUpdate={updateDutyDef}
-        onDelete={deleteDuty}
-      />
-    }
-
-    {showPostManager &&
-      <PostManager
-        roster={roster}
-        onClose={()=>setShowPostManager(false)}
-        onAdd={addPost}
-        onRename={renamePost}
-        onDelete={deletePost}
-      />
-    }
-
-    {showWardTemplates &&
-      <WardTemplatesModal
-        currentWard={roster.ward}
-        onClose={()=>setShowWardTemplates(false)}
-        onLoad={loadWardTemplate}
-      />
-    }
-
-    {showHistory &&
-      <WeeklyHistoryModal
-        onClose={()=>setShowHistory(false)}
-        onLoad={loadHistoryItem}
-        onDelete={deleteHistoryItem}
-      />
-    }
-
-    {showFontSettings &&
-      <FontSettingsModal
-        value={roster.fontFamily}
-        onChange={v=>update("fontFamily",v)}
-        pdfTypography={roster.pdfTypography}
-        onTypographyChange={(key,field,value)=>setRoster(r=>({
-          ...r,
-          pdfTypography:{
-            ...r.pdfTypography,
-            [key]:{
-              ...r.pdfTypography?.[key],
-              [field]:value
-            }
-          }
-        }))}
-        onClose={()=>setShowFontSettings(false)}
-      />
-    }
-
-  </div>;
 }
 
 
-const FONT_OPTIONS = [
-  {value:"Mukta", label:"Mukta", sample:"सकाळ दुपार रापा रासू रजा"},
-  {value:"Noto Sans Devanagari", label:"Noto Sans Devanagari", sample:"सकाळ दुपार रापा रासू रजा"},
-  {value:"Tiro Devanagari Marathi", label:"Tiro Devanagari Marathi", sample:"सकाळ दुपार रापा रासू रजा"}
-];
+/* v13.2 - additional post-duty columns */
+.paper-roster .col-extra{width:40px;}
+.paper-roster .p-extra{width:40px;font-weight:700;}
+.paper-roster .print-extra{font-weight:600;text-align:center;}
 
-function fontStack(font){
-  if(font==="Noto Sans Devanagari") return '"Noto Sans Devanagari","Mukta","Nirmala UI",sans-serif';
-  if(font==="Tiro Devanagari Marathi") return '"Tiro Devanagari Marathi","Mukta","Noto Sans Devanagari","Nirmala UI",serif';
-  return '"Mukta","Noto Sans Devanagari","Nirmala UI",sans-serif';
+/* v13.2 - staff editor columns */
+.employee-table{min-width:1280px;}
+.employee-table th,.employee-table td{vertical-align:middle;}
+.employee-table td:nth-child(4){width:105px;}
+.employee-table td:nth-child(5){min-width:310px;}
+.employee-table td:nth-child(6),
+.employee-table td:nth-child(7),
+.employee-table td:nth-child(8){width:70px;}
+
+/* v13.2 - overall text-size control */
+.app{zoom:var(--ui-scale,1);}
+.app .paper{zoom:var(--ui-inverse-scale,1);}
+
+.global-size-control{
+  margin:0 16px 14px;
+  padding:12px 13px;
+  border:1px solid #e0e5ea;
+  border-radius:9px;
+  background:#fafbfc;
 }
-
-function FontSettingsModal({value,onChange,onClose,pdfTypography,onTypographyChange}){
-  return <div className="modal-backdrop">
-    <div className="font-modal">
-      <div className="modal-head">
-        <div>
-          <h2>Marathi Font / मराठी फॉन्ट</h2>
-          <p>Duty List आणि A4 Print/PDF साठी फॉन्ट निवडा.</p>
-        </div>
-        <button onClick={onClose}><X size={18}/></button>
-      </div>
-
-      <div className="font-options">
-        {FONT_OPTIONS.map(font=><button key={font.value}
-          className={`font-option ${value===font.value?"selected":""}`}
-          onClick={()=>onChange(font.value)}
-          style={{fontFamily:fontStack(font.value)}}>
-          <span className="font-option-name">{font.label}</span>
-          <span className="font-option-sample">{font.sample}</span>
-        </button>)}
-      </div>
-
-      <div style={{
-        margin:"0 16px 14px",
-        padding:"13px",
-        border:"1px solid #e0e5ea",
-        borderRadius:8,
-        background:"#fafbfc"
-      }}>
-        <b style={{fontSize:13}}>PDF Header Row / A4 Header Row</b>
-        <div style={{fontSize:10,color:"#727d88",marginTop:3,marginBottom:10}}>
-          अ क्र, रोल नं, नावे, सोम–रवि, नैर, जमा, रुजू या पूर्ण header row साठी एकच Font आणि Weight निवडा.
-          Day name वर हीच setting लागू होईल; खालील date साठी Date setting स्वतंत्र आहे.
-        </div>
-        {["header","date","dutyCode","extraValue","summaryCount","staffName"].map(key=>{
-          const labels={
-            header:"Header Row — अ क्र / रोल नं / नावे / सोम–रवि / नैर / जमा / रुजू",
-            date:"Dates — 24/08, 25/08...",
-            dutyCode:"Duty Codes — M / E / PH / SS / DO",
-            extraValue:"रुजू / नैर / जमा Values",
-            summaryCount:"Summary Numbers",
-            staffName:"Staff Names"
-          };
-          const item=pdfTypography?.[key]||{fontFamily:value,fontWeight:400};
-          return <div key={key} style={{
-            display:"grid",
-            gridTemplateColumns:"1.7fr 1fr .8fr",
-            gap:7,
-            alignItems:"center",
-            marginTop:7
-          }}>
-            <span style={{fontSize:11,fontWeight:600}}>{labels[key]}</span>
-            <select
-              value={item.fontFamily}
-              onChange={e=>onTypographyChange(key,"fontFamily",e.target.value)}
-            >
-              {FONT_OPTIONS.map(font=><option key={font.value} value={font.value}>{font.label}</option>)}
-            </select>
-            <select
-              value={String(item.fontWeight)}
-              onChange={e=>onTypographyChange(key,"fontWeight",Number(e.target.value))}
-            >
-              <option value="400">Normal</option>
-              <option value="500">Medium</option>
-              <option value="600">Semi Bold</option>
-              <option value="700">Bold</option>
-            </select>
-          </div>;
-        })}
-      </div>
-
-      <div className="font-preview" style={{fontFamily:fontStack(value)}}>
-        <b>Preview / नमुना</b>
-        <div>श्री सागर वाल्हेकर — सकाळ (M) — सोम</div>
-      </div>
-
-      <div className="modal-foot">
-        <button onClick={onClose}>Done / पूर्ण</button>
-      </div>
-    </div>
-  </div>;
+.global-size-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  font-size:13px;
 }
+.global-size-head span{
+  min-width:46px;
+  text-align:center;
+  font-weight:700;
+  color:#34495e;
+}
+.global-size-row{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  margin-top:9px;
+}
+.global-size-row button{
+  width:30px;
+  height:30px;
+  border:1px solid #cfd6dd;
+  border-radius:6px;
+  background:#fff;
+  font-size:20px;
+  line-height:1;
+  cursor:pointer;
+}
+.global-size-row input[type="range"]{flex:1;accent-color:#34495e;}
+.global-size-control small{display:block;margin-top:6px;color:#727d88;font-size:10px;}
 
-function LoginScreen({onLogin}){
-  const [username,setUsername]=useState("");
-  const [password,setPassword]=useState("");
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState("");
-  const submit=async e=>{
-    e.preventDefault(); setError(""); setBusy(true);
-    try{
-      const res=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({username,password})});
-      const data=await res.json().catch(()=>({}));
-      if(!res.ok) throw new Error(data.error||"Login failed");
-      onLogin(data.user);
-    }catch(err){setError(err.message||"Login failed");}
-    finally{setBusy(false);}
-  };
-  return <div className="login-screen">
-    <form className="login-card" onSubmit={submit}>
-      <div className="login-logo">Duty Roster</div>
-      <h1>Hospital Duty List</h1>
-      <p>कृपया Username आणि Password ने Login करा.</p>
-      <label><span>Username</span><input value={username} onChange={e=>setUsername(e.target.value)} autoComplete="username" required/></label>
-      <label><span>Password</span><input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" required/></label>
-      {error&&<div className="login-error">{error}</div>}
-      <button className="dark-btn login-btn" disabled={busy}><LogIn size={16}/>{busy?"Logging in...":"Login"}</button>
-      <small className="login-note">Authorized user login</small>
-    </form>
-  </div>;
+@media print{
+  .app{zoom:1!important;}
+  .app .paper{zoom:1!important;}
 }
 
 
-function AdminDashboard({user,onLogout}){
-  const [wards,setWards]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [error,setError]=useState("");
-  const [showCreate,setShowCreate]=useState(false);
-  const [showEdit,setShowEdit]=useState(false);
-  const [busy,setBusy]=useState(false);
-  const [editBusy,setEditBusy]=useState(false);
-  const [editWard,setEditWard]=useState(null);
-  const [form,setForm]=useState({
-    name:"",
-    username:"",
-    password:""
-  });
-  const [editForm,setEditForm]=useState({
-    wardId:"",
-    name:"",
-    username:"",
-    password:""
-  });
-
-  const loadWards=async()=>{
-    setLoading(true);
-    setError("");
-
-    try{
-      const res=await fetch("/api/list-wards",{
-        method:"GET",
-        credentials:"include"
-      });
-
-      const data=await res.json().catch(()=>({}));
-
-      if(!res.ok){
-        throw new Error(
-          data.error||"Unable to load wards."
-        );
-      }
-
-      const list=Array.isArray(data)
-        ? data
-        : Array.isArray(data.wards)
-          ? data.wards
-          : Array.isArray(data.data)
-            ? data.data
-            : [];
-
-      setWards(list);
-
-    }catch(err){
-      setError(
-        err.message||"Unable to load wards."
-      );
-    }finally{
-      setLoading(false);
-    }
-  };
-
-  useEffect(()=>{
-    loadWards();
-  },[]);
-
-  const createWard=async e=>{
-    e.preventDefault();
-
-    if(
-      !form.name.trim() ||
-      !form.username.trim() ||
-      !form.password
-    ){
-      setError(
-        "Ward name, username and password are required."
-      );
-      return;
-    }
-
-    setBusy(true);
-    setError("");
-
-    try{
-      const res=await fetch("/api/create-ward",{
-        method:"POST",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          wardName:form.name.trim(),
-          wardCode:"",
-          username:form.username.trim(),
-          password:form.password
-        })
-      });
-
-      const data=await res.json().catch(()=>({}));
-
-      if(!res.ok){
-        throw new Error(
-          data.error||"Unable to create ward."
-        );
-      }
-
-      setForm({
-        name:"",
-        username:"",
-        password:""
-      });
-
-      setShowCreate(false);
-
-      await loadWards();
-
-    }catch(err){
-      setError(
-        err.message||"Unable to create ward."
-      );
-    }finally{
-      setBusy(false);
-    }
-  };
-
-  const deleteWard=async ward=>{
-    const wardId=
-      ward?.id||
-      ward?.ward_id||
-      null;
-
-    if(!wardId){
-      setError("Ward ID is missing.");
-      return;
-    }
-
-    const name=
-      ward?.ward_name||
-      ward?.name||
-      ward?.ward||
-      "this ward";
-
-    if(
-      !window.confirm(
-        `Delete ${name}? This will remove the ward account and roster.`
-      )
-    ){
-      return;
-    }
-
-    setError("");
-
-    try{
-      const res=await fetch("/api/delete-ward",{
-        method:"DELETE",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          wardId
-        })
-      });
-
-      const data=await res.json().catch(()=>({}));
-
-      if(!res.ok){
-        throw new Error(
-          data.error||"Unable to delete ward."
-        );
-      }
-
-      await loadWards();
-
-    }catch(err){
-      setError(
-        err.message||"Unable to delete ward."
-      );
-    }
-  };
-
-  const toggleWard=async ward=>{
-    const wardId=
-      ward?.id||
-      ward?.ward_id||
-      null;
-
-    if(!wardId){
-      setError("Ward ID is missing.");
-      return;
-    }
-
-    const active =
-      typeof ward?.active==="boolean"
-        ? ward.active
-        : typeof ward?.is_active==="boolean"
-          ? ward.is_active
-          : true;
-
-    setError("");
-
-    try{
-      const res=await fetch("/api/update-ward",{
-        method:"PATCH",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          wardId,
-          wardName:
-            ward?.ward_name||
-            ward?.name||
-            ward?.ward||
-            "",
-          wardCode:
-            ward?.ward_code||
-            "",
-          username:
-            ward?.username||
-            "",
-          active:!active
-        })
-      });
-
-      const data=await res.json().catch(()=>({}));
-
-      if(!res.ok){
-        throw new Error(
-          data.error||"Unable to update ward."
-        );
-      }
-
-      await loadWards();
-
-    }catch(err){
-      setError(
-        err.message||"Unable to update ward."
-      );
-    }
-  };
-
-  const startEditWard=ward=>{
-    const wardId=ward?.id||ward?.ward_id||null;
-    if(!wardId){
-      setError("Ward ID is missing.");
-      return;
-    }
-
-    setError("");
-    setEditWard(ward);
-    setEditForm({
-      wardId:String(wardId),
-      name:String(ward?.ward_name||ward?.name||ward?.ward||""),
-      username:String(ward?.username||ward?.email||""),
-      password:""
-    });
-    setShowEdit(true);
-  };
-
-  const saveEditWard=async e=>{
-    e.preventDefault();
-
-    if(!editForm.wardId){
-      setError("Ward ID is missing.");
-      return;
-    }
-
-    if(!editForm.name.trim() || !editForm.username.trim()){
-      setError("Ward name and username are required.");
-      return;
-    }
-
-    if(editForm.password && editForm.password.length<6){
-      setError("Ward password must be at least 6 characters.");
-      return;
-    }
-
-    setEditBusy(true);
-    setError("");
-
-    try{
-      const currentWard=editWard||{};
-      const active =
-        typeof currentWard.active==="boolean"
-          ? currentWard.active
-          : typeof currentWard.is_active==="boolean"
-            ? currentWard.is_active
-            : true;
-
-      const res=await fetch("/api/update-ward",{
-        method:"PATCH",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          wardId:editForm.wardId,
-          wardName:editForm.name.trim(),
-          wardCode:currentWard?.ward_code||"",
-          username:editForm.username.trim(),
-          password:editForm.password,
-          active
-        })
-      });
-
-      const data=await res.json().catch(()=>({}));
-
-      if(!res.ok){
-        throw new Error(
-          data.error||"Unable to update ward."
-        );
-      }
-
-      setShowEdit(false);
-      setEditWard(null);
-      setEditForm({
-        wardId:"",
-        name:"",
-        username:"",
-        password:""
-      });
-
-      await loadWards();
-
-    }catch(err){
-      setError(
-        err.message||"Unable to update ward."
-      );
-    }finally{
-      setEditBusy(false);
-    }
-  };
-
-  const openWard=(ward,type="regular")=>{
-    const wardId=ward?.id||ward?.ward_id||null;
-    if(!wardId){
-      setError("Ward ID is missing.");
-      return;
-    }
-
-    const wardName=String(ward?.ward_name||ward?.name||ward?.ward||"");
-
-    sessionStorage.setItem("admin_selected_ward_id",String(wardId));
-    sessionStorage.setItem("admin_selected_ward_name",wardName);
-    sessionStorage.setItem("admin_selected_roster_type",type==="servant"?"servant":"regular");
-
-    window.location.href=`/?ward=${encodeURIComponent(wardId)}&type=${type==="servant"?"servant":"regular"}`;
-  };
-
-  return (
-    <div
-      className="app"
-      style={{
-        minHeight:"100vh",
-        background:"#f5f7fa"
-      }}
-    >
-      <header className="topbar">
-        <div>
-          <div className="brand">
-            Duty Roster
-          </div>
-
-          <div className="brand-sub">
-            Administrator / Ward Manager
-          </div>
-        </div>
-
-        <div className="top-actions">
-          <span className="logged-user">
-            {user?.name||
-             user?.username||
-             "Administrator"}
-          </span>
-
-          <button
-            onClick={onLogout}
-            className="logout-btn"
-          >
-            <LogOut size={16}/>
-            Logout
-          </button>
-        </div>
-      </header>
-
-      <main
-        style={{
-          maxWidth:1100,
-          margin:"0 auto",
-          padding:"28px 18px"
-        }}
-      >
-        <div
-          style={{
-            background:"#fff",
-            borderRadius:16,
-            padding:24,
-            boxShadow:"0 8px 30px rgba(0,0,0,.08)"
-          }}
-        >
-          <div
-            style={{
-              display:"flex",
-              justifyContent:"space-between",
-              alignItems:"center",
-              gap:16,
-              flexWrap:"wrap",
-              marginBottom:20
-            }}
-          >
-            <div>
-              <h1
-                style={{
-                  margin:"0 0 6px"
-                }}
-              >
-                Administrator / Ward Manager
-              </h1>
-
-              <p
-                style={{
-                  margin:0,
-                  color:"#667085"
-                }}
-              >
-                सर्व तयार केलेले wards येथे manage करा.
-              </p>
-            </div>
-
-            <button
-              className="dark-btn"
-              onClick={()=>{
-                setError("");
-                setShowCreate(true);
-              }}
-            >
-              <Plus size={16}/>
-              Create New Ward
-            </button>
-          </div>
-
-          {error&&(
-            <div
-              style={{
-                padding:12,
-                marginBottom:16,
-                borderRadius:8,
-                background:"#fff1f2",
-                color:"#b42318"
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          {loading?(
-            <div
-              style={{
-                padding:30,
-                textAlign:"center"
-              }}
-            >
-              Loading wards...
-            </div>
-          ):(
-            <>
-              <h2
-                style={{
-                  fontSize:18,
-                  marginBottom:12
-                }}
-              >
-                Created Wards{" "}
-                <span
-                  style={{
-                    fontWeight:400,
-                    color:"#667085"
-                  }}
-                >
-                  {wards.length} wards
-                </span>
-              </h2>
-
-              {wards.length===0?(
-                <div
-                  style={{
-                    padding:30,
-                    textAlign:"center",
-                    border:"1px dashed #d0d5dd",
-                    borderRadius:12,
-                    color:"#667085"
-                  }}
-                >
-                  <b>
-                    No wards created yet.
-                  </b>
-
-                  <div
-                    style={{
-                      marginTop:6
-                    }}
-                  >
-                    Create your first ward to start using the roster.
-                  </div>
-                </div>
-              ):(
-                <div
-                  style={{
-                    display:"grid",
-                    gap:10
-                  }}
-                >
-                  {wards.map((ward,index)=>{
-                    const id=
-                      ward.id||
-                      ward.ward_id||
-                      `ward-${index}`;
-
-                    const name=
-                      ward.ward_name||
-                      ward.name||
-                      ward.ward||
-                      `Ward ${index+1}`;
-
-                    const username=
-                      ward.username||
-                      ward.email||
-                      "";
-
-                    const active=
-                      typeof ward.active==="boolean"
-                        ? ward.active
-                        : typeof ward.is_active==="boolean"
-                          ? ward.is_active
-                          : true;
-
-                    return (
-                      <div
-                        key={id}
-                        style={{
-                          display:"flex",
-                          alignItems:"center",
-                          justifyContent:"space-between",
-                          gap:12,
-                          flexWrap:"wrap",
-                          padding:16,
-                          border:"1px solid #e4e7ec",
-                          borderRadius:12
-                        }}
-                      >
-                        <div>
-                          <b>{name}</b>
-
-                          {username&&(
-                            <div
-                              style={{
-                                fontSize:13,
-                                color:"#667085",
-                                marginTop:3
-                              }}
-                            >
-                              Username: {username}
-                            </div>
-                          )}
-
-                          <div
-                            style={{
-                              fontSize:12,
-                              marginTop:4,
-                              color:
-                                active
-                                  ? "#027a48"
-                                  : "#b42318"
-                            }}
-                          >
-                            {active
-                              ? "Active"
-                              : "Inactive"}
-                          </div>
-                        </div>
-
-                        <div
-                          style={{
-                            display:"flex",
-                            gap:8,
-                            flexWrap:"wrap"
-                          }}
-                        >
-                          <button
-                            onClick={()=>openWard(ward,"regular")}
-                          >
-                            Regular Duty List
-                          </button>
-
-                          <button
-                            onClick={()=>openWard(ward,"servant")}
-                          >
-                            Servant Duty List
-                          </button>
-
-                          <button
-                            onClick={()=>
-                              startEditWard(ward)
-                            }
-                          >
-                            Edit / Change Password
-                          </button>
-
-                          <button
-                            onClick={()=>
-                              toggleWard(ward)
-                            }
-                          >
-                            {active
-                              ? "Deactivate"
-                              : "Activate"}
-                          </button>
-
-                          <button
-                            className="delete-btn"
-                            onClick={()=>
-                              deleteWard(ward)
-                            }
-                          >
-                            <Trash2 size={15}/>
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </main>
-
-      {showCreate&&(
-        <div className="modal-backdrop">
-          <form
-            className="ward-modal"
-            onSubmit={createWard}
-          >
-            <div className="modal-head">
-              <div>
-                <h2>
-                  Create New Ward
-                </h2>
-
-                <p>
-                  Create one login for this ward.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={()=>{
-                  if(!busy){
-                    setShowCreate(false);
-                  }
-                }}
-              >
-                <X size={18}/>
-              </button>
-            </div>
-
-            <div className="ward-modal-body">
-              <label>
-                <span>
-                  Ward Name
-                </span>
-
-                <input
-                  value={form.name}
-                  onChange={e=>
-                    setForm(f=>({
-                      ...f,
-                      name:e.target.value
-                    }))
-                  }
-                  placeholder="Ward 26"
-                  required
-                />
-              </label>
-
-              <label>
-                <span>
-                  Username
-                </span>
-
-                <input
-                  value={form.username}
-                  onChange={e=>
-                    setForm(f=>({
-                      ...f,
-                      username:e.target.value
-                    }))
-                  }
-                  placeholder="ward26"
-                  autoComplete="off"
-                  required
-                />
-              </label>
-
-              <label>
-                <span>
-                  Password
-                </span>
-
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={e=>
-                    setForm(f=>({
-                      ...f,
-                      password:e.target.value
-                    }))
-                  }
-                  placeholder="Create password"
-                  autoComplete="new-password"
-                  minLength={6}
-                  required
-                />
-              </label>
-            </div>
-
-            <div className="modal-foot">
-              <button
-                type="button"
-                onClick={()=>{
-                  if(!busy){
-                    setShowCreate(false);
-                  }
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                className="dark-btn"
-                disabled={busy}
-              >
-                {busy
-                  ? "Creating..."
-                  : "Create Ward"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {showEdit&&(
-        <div className="modal-backdrop">
-          <form
-            className="ward-modal"
-            onSubmit={saveEditWard}
-          >
-            <div className="modal-head">
-              <div>
-                <h2>Edit Ward / Change Login</h2>
-                <p>
-                  Ward name, username आणि password बदलता येतील.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={()=>{
-                  if(!editBusy){
-                    setShowEdit(false);
-                  }
-                }}
-              >
-                <X size={18}/>
-              </button>
-            </div>
-
-            <div className="ward-modal-body">
-              <label>
-                <span>Ward Name</span>
-                <input
-                  value={editForm.name}
-                  onChange={e=>
-                    setEditForm(f=>({
-                      ...f,
-                      name:e.target.value
-                    }))
-                  }
-                  required
-                />
-              </label>
-
-              <label>
-                <span>Username</span>
-                <input
-                  value={editForm.username}
-                  onChange={e=>
-                    setEditForm(f=>({
-                      ...f,
-                      username:e.target.value
-                    }))
-                  }
-                  autoComplete="off"
-                  required
-                />
-              </label>
-
-              <label>
-                <span>New Password</span>
-                <input
-                  type="password"
-                  value={editForm.password}
-                  onChange={e=>
-                    setEditForm(f=>({
-                      ...f,
-                      password:e.target.value
-                    }))
-                  }
-                  placeholder="Leave blank to keep current password"
-                  autoComplete="new-password"
-                />
-              </label>
-            </div>
-
-            <div className="modal-foot">
-              <button
-                type="button"
-                onClick={()=>{
-                  if(!editBusy){
-                    setShowEdit(false);
-                  }
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                className="dark-btn"
-                disabled={editBusy}
-              >
-                {editBusy
-                  ? "Saving..."
-                  : "Save Changes"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-    </div>
-  );
+/* v13.3 - independent A4 element font sizes */
+.print-dept{font-size:var(--fs-department)!important;}
+.print-hospital{font-size:var(--fs-hospital)!important;}
+.room-box{font-size:var(--fs-ward)!important;}
+.print-title{font-size:var(--fs-title)!important;}
+.print-date{font-size:var(--fs-date)!important;}
+
+.paper-roster thead .p-sr,
+.paper-roster thead .p-roll,
+.paper-roster thead .p-name,
+.paper-roster thead .p-day,
+.paper-roster thead .p-extra{
+  font-size:var(--fs-header-all)!important;
 }
 
-function AppShell(){
-  const [auth,setAuth]=useState(null);
-  const [checking,setChecking]=useState(true);
+/* Weekday AND date are intentionally the same size. */
+.paper-roster thead th small,
+.paper-summary thead th small{
+  font-size:var(--fs-header-all)!important;
+  line-height:1!important;
+}
 
-  const [selectedWardId,setSelectedWardId]=useState(()=>{
-    try{
-      const params=new URLSearchParams(
-        window.location.search
-      );
+.paper-summary thead .summary-day{
+  font-size:var(--fs-header-all)!important;
+}
 
-      return (
-        params.get("ward") ||
-        sessionStorage.getItem(
-          "admin_selected_ward_id"
-        ) ||
-        null
-      );
-    }catch{
-      return null;
-    }
-  });
+/* The three trailing summary columns are intentionally blank. */
+.paper-summary .summary-extra-blank{
+  font-size:0!important;
+  color:transparent!important;
+  line-height:0!important;
+}
 
-  const [selectedWardName,setSelectedWardName]=useState(()=>{
-    try{
-      return (
-        sessionStorage.getItem(
-          "admin_selected_ward_name"
-        ) || ""
-      );
-    }catch{
-      return "";
-    }
-  });
+.paper-roster tbody .group-row td{font-size:var(--fs-group)!important;}
+.paper-roster tbody .print-sr-cell{font-size:var(--fs-roll)!important;}
+.paper-roster tbody .print-roll-cell{font-size:var(--fs-roll)!important;}
+.paper-roster tbody .print-name{font-size:var(--fs-name)!important;}
+.paper-roster tbody .print-duty-code{font-size:var(--fs-duty)!important;}
+.paper-roster tbody .print-duty-code small{font-size:calc(var(--fs-duty) * .58)!important;}
+.paper-roster tbody .print-extra{font-size:var(--fs-extra)!important;}
 
-  const [selectedRosterType,setSelectedRosterType]=useState(()=>{
-    try{
-      const params=new URLSearchParams(window.location.search);
-      return params.get("type")==="servant" || sessionStorage.getItem("admin_selected_roster_type")==="servant"
-        ? "servant"
-        : "regular";
-    }catch{
-      return "regular";
-    }
-  });
+.paper-summary .summary-label{font-size:var(--fs-summary-label)!important;}
+.paper-summary thead .summary-day{font-size:var(--fs-summary-day)!important;}
+.paper-summary .summary-count{font-size:var(--fs-summary-count)!important;}
+.paper-summary .summary-abbr{font-size:var(--fs-summary-abbr)!important;}
 
-  const loadAuth=async()=>{
-    try{
-      const response=await fetch(
-        "/api/me",
-        {
-          credentials:"include"
-        }
-      );
+.element-font-modal{
+  width:min(980px,100%)!important;
+  max-height:92vh;
+  overflow:auto;
+}
+.element-size-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px 12px;
+  padding:0 16px 14px;
+}
+.element-size-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:8px 10px;
+  border:1px solid #e1e5e9;
+  border-radius:7px;
+  background:#fff;
+  font-size:12px;
+}
+.element-size-item>span{
+  flex:1;
+  font-weight:600;
+}
+.element-size-item>div{
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+.element-size-item input{
+  width:68px;
+  padding:6px 7px;
+  border:1px solid #ccd3da;
+  border-radius:5px;
+  text-align:center;
+}
+.px-label{
+  color:#6d7781;
+  font-size:11px;
+}
+@media(max-width:700px){
+  .element-size-grid{grid-template-columns:1fr;}
+}
 
-      const data=
-        await response
-          .json()
-          .catch(()=>null);
+@media print{
+  .print-dept{font-size:var(--fs-department)!important;}
+  .print-hospital{font-size:var(--fs-hospital)!important;}
+  .room-box{font-size:var(--fs-ward)!important;}
+  .print-title{font-size:var(--fs-title)!important;}
+  .print-date{font-size:var(--fs-date)!important;}
+}
 
-      setAuth(
-        response.ok
-          ? (data?.user||null)
-          : null
-      );
 
-    }catch{
-      setAuth(null);
-    }finally{
-      setChecking(false);
-    }
-  };
+/* v13.4 - inline A4 element size controls, placed near the relevant fields/table */
+.field-label-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.inline-size-control{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  white-space:nowrap;
+  margin-left:5px;
+}
+.inline-size-control button{
+  width:22px;
+  height:21px;
+  padding:0;
+  border:1px solid #cdd4dc;
+  border-radius:4px;
+  background:#fff;
+  color:#39434d;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  font-size:13px;
+  line-height:1;
+}
+.inline-size-control button:hover{
+  background:#f1f4f7;
+}
+.inline-size-control span{
+  min-width:36px;
+  text-align:center;
+  font-size:9px;
+  color:#65717d;
+  font-weight:600;
+}
+.inline-size-control.small{
+  transform:scale(.9);
+  transform-origin:right center;
+}
 
-  useEffect(()=>{
-    loadAuth();
-  },[]);
-
-  const logout=async()=>{
-    await fetch(
-      "/api/logout",
-      {
-        method:"POST",
-        credentials:"include"
-      }
-    ).catch(()=>{});
-
-    sessionStorage.removeItem(
-      "admin_selected_ward_id"
-    );
-
-    sessionStorage.removeItem(
-      "admin_selected_ward_name"
-    );
-    sessionStorage.removeItem(
-      "admin_selected_roster_type"
-    );
-
-    setSelectedWardId(null);
-    setSelectedWardName("");
-    setSelectedRosterType("regular");
-    setAuth(null);
-  };
-
-  const backToAdmin=()=>{
-    sessionStorage.removeItem(
-      "admin_selected_ward_id"
-    );
-
-    sessionStorage.removeItem(
-      "admin_selected_ward_name"
-    );
-    sessionStorage.removeItem(
-      "admin_selected_roster_type"
-    );
-
-    setSelectedWardId(null);
-    setSelectedWardName("");
-    setSelectedRosterType("regular");
-
-    window.history.replaceState(
-      {},
-      "",
-      "/"
-    );
-  };
-
-  if(checking){
-    return (
-      <div className="login-loading">
-        Loading Duty Roster...
-      </div>
-    );
+.a4-size-panel{
+  margin:0 20px 14px;
+  border:1px solid #dce2e8;
+  border-radius:8px;
+  background:#fafbfc;
+  overflow:hidden;
+}
+.a4-size-panel-head{
+  padding:9px 12px;
+  border-bottom:1px solid #e1e6eb;
+  background:#f4f6f8;
+}
+.a4-size-panel-head div{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.a4-size-panel-head b{
+  font-size:12px;
+  color:#35404b;
+}
+.a4-size-panel-head span{
+  font-size:10px;
+  color:#77828d;
+}
+.a4-size-groups{
+  display:grid;
+  grid-template-columns:1.15fr 1.5fr 1.2fr;
+  gap:0;
+}
+.a4-size-group{
+  padding:9px 10px;
+  border-right:1px solid #e1e6eb;
+}
+.a4-size-group:last-child{
+  border-right:0;
+}
+.a4-size-group-title{
+  font-size:10px;
+  font-weight:700;
+  color:#52606d;
+  margin-bottom:6px;
+}
+.a4-size-items{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.a4-size-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  min-height:25px;
+}
+.a4-size-item > span{
+  font-size:9px;
+  color:#5d6873;
+  line-height:1.2;
+}
+.a4-size-item .inline-size-control{
+  flex-shrink:0;
+}
+@media (max-width:1000px){
+  .a4-size-groups{
+    grid-template-columns:1fr;
   }
-
-  if(!auth){
-    return (
-      <LoginScreen
-        onLogin={user=>{
-          setAuth(user);
-          setChecking(false);
-        }}
-      />
-    );
+  .a4-size-group{
+    border-right:0;
+    border-bottom:1px solid #e1e6eb;
   }
-
-  const role=
-    String(auth.role||"")
-      .trim()
-      .toLowerCase();
-
-  if(
-    (role==="admin"||role==="administrator") &&
-    selectedWardId
-  ){
-    return (
-      <App
-        user={auth}
-        onLogout={logout}
-        selectedWardId={selectedWardId}
-        selectedWardName={selectedWardName}
-        selectedRosterType={selectedRosterType}
-      />
-    );
+  .a4-size-group:last-child{
+    border-bottom:0;
   }
+}
 
-  if(
-    role==="admin"||
-    role==="administrator"
-  ){
-    return (
-      <AdminDashboard
-        user={auth}
-        onLogout={logout}
-      />
-    );
+/* v13.5: one shared size for the complete table header and summary weekday/date */
+.a4-size-linked-note{
+  margin:0 16px 14px;
+  padding:9px 11px;
+  border:1px solid #d7dee5;
+  border-radius:8px;
+  background:#f7fafc;
+  color:#4a5560;
+  font-size:12px;
+  line-height:1.45;
+}
+
+/* v13.7: summary categories + EL/ML leave range */
+.leave-inline-controls{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  flex-wrap:wrap;
+  margin-top:5px;
+}
+.leave-inline-controls select,
+.leave-inline-controls input{
+  min-width:0;
+  height:28px;
+  padding:3px 5px;
+  border:1px solid #d5dce3;
+  border-radius:5px;
+  font-size:10px;
+  background:#fff;
+}
+.leave-inline-controls select{max-width:145px;}
+.leave-inline-controls input{width:112px;}
+.leave-inline-controls span{font-size:10px;color:#68737d;}
+.leave-range-preview{
+  margin-top:4px;
+  font-size:10px;
+  font-weight:700;
+  color:#8a3b12;
+}
+.leave-day-mark{
+  min-height:42px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:2px;
+  border:1px solid #e3b48d;
+  border-radius:5px;
+  background:#fff7ef;
+  color:#8a3b12;
+}
+.leave-day-mark b{font-size:12px;}
+.leave-day-mark small{font-size:8px;}
+.summary-check{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  font-size:9px;
+  white-space:nowrap;
+}
+.summary-check input{margin:0;}
+.duty-header-row,
+.duty-row{
+  grid-template-columns:1.1fr .55fr 1fr .8fr .8fr .65fr .45fr;
+}
+.leave-range-print{
+  display:block;
+  margin-top:2px;
+  font-size:8px;
+  line-height:1.15;
+  font-weight:700;
+  white-space:normal;
+}
+.forced-leave-cell{
+  font-weight:700;
+}
+.paper-summary .summary-label{
+  text-align:center !important;
+  vertical-align:middle !important;
+}
+.paper-summary .summary-label .summary-abbr{
+  margin-left:3px;
+}
+@media print{
+  .leave-range-print{font-size:7px !important;}
+  .forced-leave-cell small{font-size:7px !important;}
+}
+
+
+/* v13.8: EL/ML notice stays on the same row as the staff name in A4 */
+.print-name-inline{
+  display:flex;
+  align-items:baseline;
+  gap:6px;
+  flex-wrap:nowrap;
+  white-space:nowrap;
+  min-width:0;
+}
+.leave-range-print-inline{
+  font-size:9px;
+  font-weight:700;
+  color:#8a3b12;
+  white-space:nowrap;
+}
+.holiday-check{
+  min-width:72px;
+}
+@media print{
+  .print-name-inline{white-space:nowrap;}
+  .leave-range-print-inline{font-size:8px;}
+}
+
+
+/* v13.8.1: daily EL/ML cells are never auto-forced. */
+.forced-leave-cell{background:inherit;}
+
+
+/* v14.1: EL/ML notice spans only the applicable week dates.
+   If leave ends before Sunday, the remaining days keep their normal duty cells. */
+.leave-range-print-span{
+  border:0 !important;
+  outline:0 !important;
+  text-align:center !important;
+  vertical-align:middle !important;
+  padding:1px 3px !important;
+  white-space:normal !important;
+  overflow:hidden !important;
+  font-size:8px !important;
+  line-height:1.1 !important;
+  font-weight:700 !important;
+  color:#8a3b12 !important;
+  background:transparent !important;
+  height:29px !important;
+  box-sizing:border-box !important;
+}
+
+.leave-range-print-span .leave-range-print-text{
+  display:block !important;
+  width:100% !important;
+  max-width:100% !important;
+  white-space:normal !important;
+  overflow-wrap:anywhere !important;
+  word-break:normal !important;
+  text-align:center !important;
+  line-height:1.1 !important;
+}
+
+@media print{
+  .leave-range-print-span{
+    border:0 !important;
+    outline:0 !important;
+    white-space:normal !important;
+    overflow:hidden !important;
+    padding:1px 2px !important;
+    font-size:8px !important;
+    line-height:1.05 !important;
   }
-
-  return (
-    <App
-      user={auth}
-      onLogout={logout}
-    />
-  );
-}
-
-function SizeControl({value,onChange,min=7,max=40,small=false}) {
-  const n=Number(value)||12;
-  return (
-    <div className={`inline-size-control ${small?"small":""}`}>
-      <button type="button" title="Decrease size" onClick={()=>onChange(Math.max(min,n-1))}>−</button>
-      <span>{n}px</span>
-      <button type="button" title="Increase size" onClick={()=>onChange(Math.min(max,n+1))}>+</button>
-    </div>
-  );
-}
-
-function Field({label,value,onChange,type="text",wide=false,sizeKey,fontSizes,onSizeChange}) {
-  return (
-    <label className={wide?"wide-field":""}>
-      <div className="field-label-row">
-        <span>{label}</span>
-        {sizeKey && fontSizes && onSizeChange &&
-          <SizeControl
-            value={fontSizes[sizeKey]}
-            onChange={v=>onSizeChange(sizeKey,v)}
-            small
-          />
-        }
-      </div>
-
-      <div className="input-wrap">
-        {type==="date"&&<CalendarDays size={15}/>}
-
-        <input
-          type={type}
-          value={value}
-          onChange={e=>onChange(e.target.value)}
-        />
-      </div>
-    </label>
-  );
-}
-
-function A4SizeControls({fontSizes,onChange}) {
-  const groups=[
-    {
-      title:"A4 Header / शीर्षक",
-      items:[
-        ["hospital","Hospital Name"],
-        ["department","Department"],
-        ["ward","Ward"],
-        ["title","Roster Title"],
-        ["date","Date"]
-      ]
-    },
-    {
-      title:"Main Table / मुख्य टेबल",
-      items:[
-        ["headerAll","अ क्र / रोल नं / नावे / सोम–रवि + दिनांक / नैर / जमा / रुजू"],
-        ["group","Post / Group"],
-        ["rollNumber","Roll No."],
-        ["dutyCode","Duty Code"],
-        ["extraValue","नैर / जमा / रुजू values"]
-      ]
-    },
-    {
-      title:"Duty Summary / ड्युटी सारांश",
-      items:[
-        ["summaryLabel","सकाळ / दुपार / रापा / रासू / रजा / एकूण"],
-        ["summaryCount","Summary Numbers"],
-        ["summaryAbbr","M / E / N / NO / L"]
-      ]
-    }
-  ];
-
-  return (
-    <div className="a4-size-panel">
-      <div className="a4-size-panel-head">
-        <div>
-          <b>A4 Element Size / A4 प्रत्येक घटकाचा आकार</b>
-          <span>प्रत्येक घटकाचा आकार येथेच बदलता येईल.</span>
-        </div>
-      </div>
-
-      <div className="a4-size-groups">
-        {groups.map(group=>
-          <div className="a4-size-group" key={group.title}>
-            <div className="a4-size-group-title">{group.title}</div>
-            <div className="a4-size-items">
-              {group.items.map(([key,label])=>
-                <div className="a4-size-item" key={key}>
-                  <span>{label}</span>
-                  <SizeControl
-                    value={fontSizes?.[key]||12}
-                    onChange={v=>onChange(key,v)}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="a4-size-linked-note">
-        <b>सोम–रवि + दिनांक:</b> Main Table Header ची एकच size setting
-        वापरली जाईल. त्यामुळे Main Table मधील <b>अ क्र, रोल नं, नावे,
-        सोम–रवि + दिनांक, नैर, जमा, रुजू</b> आणि Summary मधील
-        <b>सोम–रवि + दिनांक</b> यांचा font size आपोआप समान राहील.
-      </div>
-    </div>
-  );
-}
-
-function TableSizeControl({label,value,onChange,min,max,step=1}) {
-  const n=Number(value)||min;
-  return (
-    <div className="table-size-item">
-      <div className="table-size-label">
-        <span>{label}</span>
-        <b>{n}px</b>
-      </div>
-
-      <div className="table-size-controls">
-        <button
-          type="button"
-          onClick={()=>onChange(Math.max(min,n-step))}
-        >
-          −
-        </button>
-
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={n}
-          onChange={e=>onChange(Number(e.target.value))}
-        />
-
-        <button
-          type="button"
-          onClick={()=>onChange(Math.min(max,n+step))}
-        >
-          +
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function TableSizeControls({tableSizes,isServant,onChange}) {
-  const items=[
-    ["sr","अ क्र column",30,80,1],
-
-    ...(!isServant
-      ? [["roll","रोल नं column",40,100,1]]
-      : []),
-
-    ["name","नावे / Name column",110,260,5],
-    ["day","प्रत्येक दिवस column",35,90,1],
-
-    ...(!isServant
-      ? [["extra","नैर / जमा / रुजू column",25,70,1]]
-      : [["extra","जमा column",25,70,1]]),
-
-    ["row","Staff row height",22,60,1],
-    ["headerRow","Main header height",30,70,1],
-    ["groupRow","Post / Group row height",24,60,1],
-    ["summaryHeaderRow","Summary header height",28,65,1],
-    ["summaryRow","Summary row height",22,55,1]
-  ];
-
-  return (
-    <div className="table-size-panel">
-      <div className="table-size-panel-head">
-        <div>
-          <b>Table Width & Row Size / टेबलचा आकार</b>
-          <span>
-            {isServant
-              ? "Servant Duty List"
-              : "Regular Duty List"}
-          </span>
-        </div>
-      </div>
-
-      <div className="table-size-grid">
-        {items.map(([key,label,min,max,step])=>(
-          <TableSizeControl
-            key={key}
-            label={label}
-            value={tableSizes?.[key] ?? min}
-            onChange={v=>onChange(key,v)}
-            min={min}
-            max={max}
-            step={step}
-          />
-        ))}
-      </div>
-
-      <div className="table-size-note">
-        <b>टीप:</b> हे बदल A4 Preview आणि PDF मध्ये लागू होतील.
-        प्रत्येक ward roster मध्ये ही settings जतन होतील.
-      </div>
-    </div>
-  );
-}
-
-function DutyManager({roster,onClose,onAdd,onUpdate,onDelete}) {
-  return (
-    <div className="modal-backdrop">
-
-      <div className="duty-modal">
-
-        <div className="modal-head">
-
-          <div>
-            <h2>Manage Duties</h2>
-            <p>
-              Duty name, abbreviation, Login / Logout, Summary आणि सुट्टी (Off) मध्ये मोजायचे आहे का ते निवडा.
-            </p>
-          </div>
-
-          <button onClick={onClose}>
-            <X size={18}/>
-          </button>
-
-        </div>
-
-        <div className="duty-list">
-
-          <div className="duty-header-row">
-            <span>Duty Name</span>
-            <span>Code</span>
-            <span>Description</span>
-            <span>Login</span>
-            <span>Logout</span>
-            <span>Summary</span>
-            <span>सुट्टी (Off)</span>
-            <span></span>
-          </div>
-
-          {roster.duties.map(d=>
-            <div className="duty-row" key={d.key}>
-
-              <input
-                value={d.label}
-                onChange={e=>onUpdate(d.key,"label",e.target.value)}
-                placeholder="सकाळ"
-              />
-
-              <input
-                value={d.abbr}
-                onChange={e=>onUpdate(d.key,"abbr",e.target.value)}
-                placeholder="M"
-              />
-
-              <input
-                value={d.description}
-                onChange={e=>onUpdate(d.key,"description",e.target.value)}
-                placeholder="Morning"
-              />
-
-              <div className="time-input">
-                <LogIn size={14}/>
-                <input
-                  type="time"
-                  value={d.login}
-                  onChange={e=>onUpdate(d.key,"login",e.target.value)}
-                />
-              </div>
-
-              <div className="time-input">
-                <LogOut size={14}/>
-                <input
-                  type="time"
-                  value={d.logout}
-                  onChange={e=>onUpdate(d.key,"logout",e.target.value)}
-                />
-              </div>
-
-              <label className="summary-check">
-                <input
-                  type="checkbox"
-                  checked={!!d.includeInSummary}
-                  onChange={e=>onUpdate(d.key,"includeInSummary",e.target.checked)}
-                />
-                <span>Include</span>
-              </label>
-
-              <label className="summary-check holiday-check">
-                <input
-                  type="checkbox"
-                  checked={!!d.countsAsHoliday}
-                  onChange={e=>onUpdate(d.key,"countsAsHoliday",e.target.checked)}
-                />
-                <span>Off</span>
-              </label>
-
-              <button
-                className="delete-btn"
-                onClick={()=>onDelete(d.key)}
-              >
-                <Trash2 size={16}/>
-              </button>
-
-            </div>
-          )}
-
-        </div>
-
-        <div className="modal-foot">
-
-          <button onClick={onAdd}>
-            <Plus size={15}/>
-            Add Custom Duty
-          </button>
-
-          <button className="dark-btn" onClick={onClose}>
-            Done
-          </button>
-
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
-function PostManager({roster,onClose,onAdd,onRename,onDelete}) {
-  const posts=getPosts(roster);
-
-  return (
-    <div className="modal-backdrop">
-
-      <div className="ward-modal">
-
-        <div className="modal-head">
-
-          <div>
-            <h2>Manage Posts / पदे</h2>
-            <p>
-              कक्षसेवक, सफाईगार किंवा तुमचे स्वतःचे Custom Post तयार करा.
-            </p>
-          </div>
-
-          <button onClick={onClose}>
-            <X size={18}/>
-          </button>
-
-        </div>
-
-        <div className="ward-modal-body">
-
-          <div className="saved-template-title">
-            Available Posts
-          </div>
-
-          <div className="saved-template-list">
-
-            {posts.map(post=>{
-
-              const count=roster.employees.filter(
-                e=>e.group===post
-              ).length;
-
-              return (
-                <div className="saved-template-row" key={post}>
-
-                  <div>
-                    <b>{post}</b>
-                    <small>{count} staff</small>
-                  </div>
-
-                  <div className="template-row-actions">
-
-                    <button
-                      onClick={()=>onRename(post)}
-                    >
-                      Rename
-                    </button>
-
-                    <button
-                      className="danger-text"
-                      onClick={()=>onDelete(post)}
-                    >
-                      Delete
-                    </button>
-
-                  </div>
-
-                </div>
-              );
-            })}
-
-          </div>
-
-          <div className="template-help">
-            <b>Default posts:</b>
-            परिसेवक, अधिपरिचारिका, कक्षसेवक, सफाईगार.
-            <br/>
-            तुम्ही कोणतेही custom post उदा. वार्ड बॉय, आया,
-            सुरक्षा रक्षक इत्यादी जोडू शकता.
-          </div>
-
-        </div>
-
-        <div className="modal-foot">
-
-          <button onClick={onAdd}>
-            <Plus size={15}/>
-            Add Custom Post
-          </button>
-
-          <button
-            className="dark-btn"
-            onClick={onClose}
-          >
-            Done
-          </button>
-
-        </div>
-
-      </div>
-
-    </div>
-  );
-}
-
-function WardTemplatesModal({currentWard,onClose,onLoad}) {
-  const [ward,setWard]=useState(currentWard||"");
-  const [items,setItems]=useState([]);
-
-  const refresh=()=>{
-    const list=[];
-    for(let i=0;i<localStorage.length;i++){
-      const key=localStorage.key(i);
-      if(!key?.startsWith("marathi-duty-template:")) continue;
-      try{
-        list.push(JSON.parse(localStorage.getItem(key)));
-      }catch{}
-    }
-    setItems(
-      list.sort((a,b)=>
-        (a.ward||"").localeCompare(b.ward||"")
-      )
-    );
-  };
-
-  useEffect(()=>{refresh()},[]);
-
-  const rename=(oldWard)=>{
-    const next=prompt("New Ward / Room name:",oldWard);
-    if(!next?.trim() || next.trim()===oldWard) return;
-
-    const oldKey=`marathi-duty-template:${oldWard.trim().toLowerCase()}`;
-    const newKey=`marathi-duty-template:${next.trim().toLowerCase()}`;
-    const raw=localStorage.getItem(oldKey);
-
-    if(!raw)return;
-
-    try{
-      const data=JSON.parse(raw);
-      data.ward=next.trim();
-      localStorage.setItem(newKey,JSON.stringify(data));
-      localStorage.removeItem(oldKey);
-      refresh();
-    }catch{
-      alert("Could not rename this template.");
-    }
-  };
-
-  const remove=(wardName)=>{
-    if(!confirm(`Delete saved template for ${wardName}?`))return;
-
-    localStorage.removeItem(
-      `marathi-duty-template:${wardName.trim().toLowerCase()}`
-    );
-
-    refresh();
-  };
-
-  return (
-    <div className="modal-backdrop">
-
-      <div className="ward-modal">
-
-        <div className="modal-head">
-
-          <div>
-            <h2>Ward Templates</h2>
-            <p>Each ward keeps its own reusable staff list.</p>
-          </div>
-
-          <button onClick={onClose}>
-            <X size={18}/>
-          </button>
-
-        </div>
-
-        <div className="ward-modal-body">
-
-          <label>
-            <span>Load Ward</span>
-
-            <div className="template-load-row">
-
-              <input
-                value={ward}
-                onChange={e=>setWard(e.target.value)}
-                placeholder="कक्ष क्र. २६"
-              />
-
-              <button
-                className="dark-btn"
-                onClick={()=>onLoad(ward)}
-              >
-                <FolderOpen size={15}/>
-                Load
-              </button>
-
-            </div>
-
-          </label>
-
-          <div className="saved-template-title">
-            Saved Wards
-          </div>
-
-          {items.length===0 ? (
-
-            <div className="empty-template">
-              No saved ward templates yet.
-            </div>
-
-          ) : (
-
-            <div className="saved-template-list">
-
-              {items.map(item=>
-                <div className="saved-template-row" key={item.ward}>
-
-                  <div>
-                    <b>{item.ward}</b>
-                    <small>
-                      {item.employees?.length||0} staff
-                    </small>
-                  </div>
-
-                  <div className="template-row-actions">
-
-                    <button onClick={()=>onLoad(item.ward)}>
-                      Load
-                    </button>
-
-                    <button onClick={()=>rename(item.ward)}>
-                      Rename
-                    </button>
-
-                    <button
-                      className="danger-text"
-                      onClick={()=>remove(item.ward)}
-                    >
-                      Delete
-                    </button>
-
-                  </div>
-
-                </div>
-              )}
-
-            </div>
-          )}
-
-          <div className="template-help">
-            <b>Tip:</b> Save Ward Template after updating the permanent
-            staff list. Loading a template clears dates and daily
-            assignments, but keeps staff and duty definitions.
-          </div>
-
-        </div>
-
-        <div className="modal-foot">
-          <button onClick={onClose}>Close</button>
-        </div>
-
-      </div>
-
-    </div>
-  );
-}
-
-function WeeklyHistoryModal({onClose,onLoad,onDelete}) {
-  const [items,setItems]=useState([]);
-
-  const refresh=()=>{
-    try{
-      setItems(
-        JSON.parse(
-          localStorage.getItem("marathi-duty-history-v7")||"[]"
-        )
-      );
-    }catch{
-      setItems([]);
-    }
-  };
-
-  useEffect(()=>{refresh()},[]);
-
-  return (
-    <div className="modal-backdrop">
-
-      <div className="ward-modal history-modal">
-
-        <div className="modal-head">
-
-          <div>
-            <h2>Weekly Roster History</h2>
-            <p>Open a previous weekly duty list.</p>
-          </div>
-
-          <button onClick={onClose}>
-            <X size={18}/>
-          </button>
-
-        </div>
-
-        <div className="ward-modal-body">
-
-          {items.length===0 ? (
-
-            <div className="empty-template">
-              No weekly rosters saved yet.
-            </div>
-
-          ) : (
-
-            <div className="saved-template-list">
-
-              {items.map(item=>
-                <div className="saved-template-row" key={item.id}>
-
-                  <div>
-                    <b>{item.ward||"Ward"}</b>
-                    <small>
-                      {formatDate(item.from)}
-                      {item.to?` — ${formatDate(item.to)}`:""}
-                    </small>
-                  </div>
-
-                  <div className="template-row-actions">
-
-                    <button onClick={()=>onLoad(item)}>
-                      Open
-                    </button>
-
-                    <button
-                      className="danger-text"
-                      onClick={()=>{
-                        onDelete(item.id);
-                        refresh();
-                      }}
-                    >
-                      Delete
-                    </button>
-
-                  </div>
-
-                </div>
-              )}
-
-            </div>
-          )}
-
-        </div>
-
-        <div className="modal-foot">
-          <button onClick={onClose}>Close</button>
-        </div>
-
-      </div>
-
-    </div>
-  );
-}
-
-const PrintableRoster=forwardRef(function PrintableRoster({roster,labels,rosterType="regular"},ref){
-
-  const isServantRoster=rosterType==="servant";
-
-  const groups=getPosts(roster)
-    .map(group=>({
-      group,
-      rows:roster.employees.filter(e=>e.group===group)
-    }))
-    .filter(g=>g.rows.length);
-
-  const finalGroups=groups.length
-    ? groups
-    : [{group:"अधिपरिचारिका",rows:[newEmployee()]}];
-
-  const dailyDutyCounts=Array.from(
-    {length:7},
-    ()=>Object.fromEntries(roster.duties.map(d=>[d.key,0]))
-  );
-  const dailyHolidayCounts=Array(7).fill(0);
-  const dailyLeaveCounts=Array(7).fill(0);
-
-  roster.employees.forEach(e=>{
-    // Incharge / परिसेवक are operational staff and are intentionally
-    // excluded from every summary count (duties, leave and holidays).
-    if(isSummaryExcludedEmployee(e)){
-      return;
-    }
-
-    // EL/ML date range contributes to the Leave summary,
-    // but NEVER overwrites the employee's selected daily duty.
-    e.duties.forEach((key,dayIndex)=>{
-      if(key && dailyDutyCounts[dayIndex]?.[key]!==undefined){
-        dailyDutyCounts[dayIndex][key]++;
-        const duty=roster.duties.find(d=>d.key===key);
-        if(isLeaveDuty(duty)) dailyLeaveCounts[dayIndex]++;
-        if(isHolidayDuty(duty) || duty?.countsAsHoliday) dailyHolidayCounts[dayIndex]++;
-      }
-    });
-
-    if(e.leaveType && e.leaveFrom && e.leaveTo){
-      for(let dayIndex=0; dayIndex<7; dayIndex++){
-        const date=isoDateForDay(roster.from,dayIndex);
-        if(date && date>=e.leaveFrom && date<=e.leaveTo){
-          dailyLeaveCounts[dayIndex]++;
-        }
-      }
-    }
-  });
-
-  const summaryDuties=DEFAULT_DUTIES;
-  const customSummaryDuties=roster.duties.filter(d=>!SUMMARY_DEFAULT_KEYS.has(d.key) && d.includeInSummary);
-
-  const pdfTypography={
-    header:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.header||{})},
-    date:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.date||{})},
-    dutyCode:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.dutyCode||{})},
-    extraValue:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.extraValue||{})},
-    summaryCount:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.summaryCount||{})},
-    staffName:{fontFamily:"Tiro Devanagari Marathi",fontWeight:400,...(roster.pdfTypography?.staffName||{})}
-  };
-
-  const fs = {
-    hospital:18,
-    department:18,
-    ward:16,
-    title:15,
-    date:13,
-    headerAll:11,
-    group:12,
-    rollNumber:10.5,
-    staffName:16,
-    dutyCode:12,
-    extraValue:10.5,
-    summaryLabel:10.5,
-    summaryCount:11,
-    summaryAbbr:8,
-    ...(roster.fontSizes||{})
-  };
-
-  const fontVars = {
-    "--fs-hospital":`${fs.hospital}px`,
-    "--fs-department":`${fs.department}px`,
-    "--fs-ward":`${fs.ward}px`,
-    "--fs-title":`${fs.title}px`,
-    "--fs-date":`${fs.date}px`,
-    "--fs-header-all":`${fs.headerAll}px`,
-    "--fs-group":`${fs.group}px`,
-    "--fs-roll":`${fs.rollNumber}px`,
-    "--fs-name":`${fs.staffName}px`,
-    "--fs-duty":`${fs.dutyCode}px`,
-    "--fs-extra":`${fs.extraValue}px`,
-    "--fs-summary-label":`${fs.summaryLabel}px`,
-    "--fs-summary-day":`${fs.headerAll}px`,
-    "--fs-summary-count":`${fs.summaryCount}px`,
-    "--fs-summary-abbr":`${fs.summaryAbbr}px`
-  };
-
-  return (
-    <div
-      className="paper"
-      ref={ref}
-      style={{
-        fontFamily:fontStack(roster.fontFamily),
-        ...fontVars,
-        "--tbl-sr":`${roster.tableSizes?.sr||40}px`,
-        "--tbl-roll":`${roster.tableSizes?.roll||58}px`,
-        "--tbl-name":`${roster.tableSizes?.name||165}px`,
-        "--tbl-day":`${roster.tableSizes?.day||49}px`,
-        "--tbl-extra":`${roster.tableSizes?.extra||40}px`,
-        "--tbl-row":`${roster.tableSizes?.row||29}px`,
-        "--tbl-header-row":`${roster.tableSizes?.headerRow||43}px`,
-        "--tbl-summary-header-row":`${roster.tableSizes?.summaryHeaderRow||37}px`,
-        "--tbl-summary-row":`${roster.tableSizes?.summaryRow||30}px`,
-        "--tbl-group-row":`${roster.tableSizes?.groupRow||33}px`
-      }}
-    >
-
-      <div className="print-header">
-
-        <div className="print-dept">
-          {roster.department}
-        </div>
-
-        <div className="print-hospital">
-          {roster.hospital}
-        </div>
-
-        <div className="room-box">
-          {roster.ward}
-        </div>
-
-        <div className="print-title">
-          {roster.title}
-        </div>
-
-        <div className="print-date">
-          दिनांक :- <u>{formatDate(roster.from)}</u>
-          <span>ते</span>
-          दिनांक :- <u>{formatDate(roster.to)}</u>
-        </div>
-
-      </div>
-
-      <table className="paper-roster">
-
-        <colgroup>
-          <col className="col-sr" />
-          {!isServantRoster && <col className="col-roll" />}
-          <col className="col-name" />
-          {labels.map((_,i)=><col className="col-day" key={i} />)}
-          {!isServantRoster && <col className="col-extra" />}
-          {!isServantRoster && <col className="col-extra" />}
-          {!isServantRoster && <col className="col-extra" />}
-        </colgroup>
-
-        <thead>
-          <tr>
-
-            <th className="p-sr" style={{fontFamily:fontStack(pdfTypography.header.fontFamily),fontWeight:pdfTypography.header.fontWeight}}>अ क्र</th>
-            {!isServantRoster && <th className="p-roll" style={{fontFamily:fontStack(pdfTypography.header.fontFamily),fontWeight:pdfTypography.header.fontWeight}}>रोल नं</th>}
-            <th className="p-name" style={{fontFamily:fontStack(pdfTypography.header.fontFamily),fontWeight:pdfTypography.header.fontWeight}}>नावे</th>
-
-            {labels.map((d,i)=>
-              <th
-                key={i}
-                className="p-day"
-                style={{fontFamily:fontStack(pdfTypography.header.fontFamily),fontWeight:pdfTypography.header.fontWeight}}
-              >
-                {d.short}
-                <small style={{fontFamily:fontStack(pdfTypography.date.fontFamily),fontWeight:pdfTypography.date.fontWeight}}>{d.date}</small>
-              </th>
-            )}
-            {!isServantRoster && <th className="p-extra" style={{fontFamily:fontStack(pdfTypography.header.fontFamily),fontWeight:pdfTypography.header.fontWeight}}>नैर</th>}
-            <th className="p-extra" style={{fontFamily:fontStack(pdfTypography.header.fontFamily),fontWeight:pdfTypography.header.fontWeight}}>जमा</th>
-            {!isServantRoster && <th className="p-extra" style={{fontFamily:fontStack(pdfTypography.header.fontFamily),fontWeight:pdfTypography.header.fontWeight}}>रुजू</th>}
-
-          </tr>
-        </thead>
-
-        <tbody>
-
-          {finalGroups.map(section=>
-            <React.Fragment key={section.group}>
-
-              <tr className="group-row">
-                <td colSpan={isServantRoster ? 10 : 13}>
-                  {section.group}
-                </td>
-              </tr>
-
-              {section.rows.map((e,i)=>
-                <PrintableRow
-                  key={e.id}
-                  employee={e}
-                  index={i}
-                  duties={roster.duties}
-                  from={roster.from}
-                  rosterType={rosterType}
-                  pdfTypography={pdfTypography}
-                />
-              )}
-
-            </React.Fragment>
-          )}
-
-        </tbody>
-
-      </table>
-
-      <table className={`paper-summary ${isServantRoster ? "paper-summary-servant" : "paper-summary-regular"}`}>
-
-        <colgroup>
-          <col className="col-sr" />
-          {!isServantRoster && <col className="col-roll" />}
-          <col className="col-name" />
-          {labels.map((_,i)=><col className="col-day" key={i} />)}
-          {!isServantRoster && <col className="col-extra" />}
-          {!isServantRoster && <col className="col-extra" />}
-          {!isServantRoster && <col className="col-extra" />}
-          {isServantRoster && <col className="col-extra" />}
-        </colgroup>
-
-        <thead>
-          <tr>
-            <th className="summary-duty" colSpan={isServantRoster ? 2 : 3} style={{fontFamily:fontStack(pdfTypography.header.fontFamily),fontWeight:pdfTypography.header.fontWeight}}>
-              ड्युटी
-            </th>
-
-            {labels.map((d,i)=>
-              <th
-                key={i}
-                className="summary-day"
-                style={{fontFamily:fontStack(pdfTypography.header.fontFamily),fontWeight:pdfTypography.header.fontWeight}}
-              >
-                {d.short}
-                <small style={{fontFamily:fontStack(pdfTypography.date.fontFamily),fontWeight:pdfTypography.date.fontWeight}}>{d.date}</small>
-              </th>
-            )}
-            {/* Match the main roster's trailing columns exactly.
-                Regular roster: नैर / जमा / रुजू.
-                Servant roster: जमा only. */}
-            {isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
-            {!isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
-            {!isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
-            {!isServantRoster && <th className="summary-extra summary-extra-blank" aria-hidden="true"></th>}
-
-          </tr>
-        </thead>
-
-        <tbody>
-
-          {summaryDuties.map(duty=>
-            <tr key={duty.key}>
-              <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
-                {duty.label}
-                <span className="summary-abbr">({duty.abbr})</span>
-              </th>
-              {labels.map((_,dayIndex)=>
-                <td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(pdfTypography.summaryCount.fontFamily),fontWeight:pdfTypography.summaryCount.fontWeight}}>
-                  {SUMMARY_DEFAULT_KEYS.has(duty.key) && duty.key==="leave"
-                    ? (dailyLeaveCounts[dayIndex]||"")
-                    : (dailyDutyCounts[dayIndex][duty.key]||"")}
-                </td>
-              )}
-              {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-            </tr>
-          )}
-
-          <tr>
-            <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
-              सुट्टया
-            </th>
-            {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(pdfTypography.summaryCount.fontFamily),fontWeight:pdfTypography.summaryCount.fontWeight}}>{dailyHolidayCounts[dayIndex]||""}</td>)}
-            {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-          </tr>
-
-          {customSummaryDuties.map(duty=>
-            <tr key={`custom-summary-${duty.key}`}>
-              <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
-                {duty.label}
-                <span className="summary-abbr">({duty.abbr})</span>
-              </th>
-              {labels.map((_,dayIndex)=><td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(pdfTypography.summaryCount.fontFamily),fontWeight:pdfTypography.summaryCount.fontWeight}}>{dailyDutyCounts[dayIndex][duty.key]||""}</td>)}
-              {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-              {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-            </tr>
-          )}
-
-          <tr className="grand-total">
-            <th className="summary-duty summary-label" colSpan={isServantRoster ? 2 : 3}>
-              एकूण
-            </th>
-
-            {labels.map((_,dayIndex)=>
-              <td key={dayIndex} className="summary-count" style={{fontFamily:fontStack(pdfTypography.summaryCount.fontFamily),fontWeight:pdfTypography.summaryCount.fontWeight}}>
-                {roster.employees.reduce((total,e)=>{
-                  if(isSummaryExcludedEmployee(e)) return total;
-
-                  const date=isoDateForDay(roster.from,dayIndex);
-                  const onLeave=!!(
-                    e.leaveType && e.leaveFrom && e.leaveTo &&
-                    date && date>=e.leaveFrom && date<=e.leaveTo
-                  );
-                  return total + (e.duties[dayIndex] || onLeave ? 1 : 0);
-                },0)||""}
-              </td>
-            )}
-            {isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-            {!isServantRoster && <td className="summary-extra summary-extra-blank" aria-hidden="true"></td>}
-          </tr>
-
-        </tbody>
-
-      </table>
-
-    </div>
-  );
-});
-
-function PrintableRow({employee,index,duties,from,rosterType="regular",pdfTypography}) {
-  const isServantRoster=rosterType==="servant";
-  const hasLeave=!!(employee.leaveType && employee.leaveFrom && employee.leaveTo);
-  const leaveDays=hasLeave
-    ? Array.from({length:7},(_,i)=>{
-        const date=isoDateForDay(from,i);
-        return !!(date && date>=employee.leaveFrom && date<=employee.leaveTo);
-      })
-    : Array(7).fill(false);
-
-  const renderDutyCell=(dayIndex)=>{
-    const key=employee.duties[dayIndex];
-    const duty=duties.find(d=>d.key===key);
-    return (
-      <td key={`duty-${dayIndex}`} className="print-duty-code" style={{fontFamily:fontStack(pdfTypography?.dutyCode?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.dutyCode?.fontWeight||400}}>
-        {duty?.abbr || ""}
-        {employee.customNotes?.[dayIndex] ? <small>{employee.customNotes[dayIndex]}</small> : null}
-      </td>
-    );
-  };
-
-  const dayCells=[];
-  let i=0;
-  while(i<7){
-    if(!leaveDays[i]){
-      dayCells.push(renderDutyCell(i));
-      i++;
-      continue;
-    }
-
-    const start=i;
-    while(i<7 && leaveDays[i]) i++;
-    const span=i-start;
-    dayCells.push(
-      <td
-        key={`leave-${start}`}
-        colSpan={span}
-        className="leave-range-print-span"
-      >
-        <span className="leave-range-print-text">
-          {employee.leaveType==="ML" ? "ON MEDICAL LEAVE" : "ON EL"} FROM {formatDate(employee.leaveFrom)} TO {formatDate(employee.leaveTo)}
-        </span>
-      </td>
-    );
+  .leave-range-print-span .leave-range-print-text{
+    white-space:normal !important;
+    overflow-wrap:anywhere !important;
   }
-
-  return (
-    <tr>
-
-      <td className="print-sr-cell">{index+1}</td>
-
-      {!isServantRoster && <td className="print-roll-cell">{employee.rollNo}</td>}
-
-      <td
-        className="print-name"
-        style={{
-          fontSize:`${employee.marathiFontSize||16}px`,
-          fontFamily:fontStack(pdfTypography?.staffName?.fontFamily||"Tiro Devanagari Marathi"),
-          fontWeight:pdfTypography?.staffName?.fontWeight ?? (employee.marathiBold?700:400)
-        }}
-      >
-        <div className="print-name-inline">
-          <span>{displayStaffName(employee)}</span>
-        </div>
-      </td>
-
-      {dayCells}
-
-      {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.nair||""}</td>}
-      <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.jama||""}</td>
-      {!isServantRoster && <td className="print-extra" style={{fontFamily:fontStack(pdfTypography?.extraValue?.fontFamily||"Tiro Devanagari Marathi"),fontWeight:pdfTypography?.extraValue?.fontWeight||400}}>{employee.ruju||""}</td>}
-
-    </tr>
-  );
 }
 
-createRoot(
-  document.getElementById("root")
-).render(<AppShell/>);
+
+/* FINAL FIX: summary weekday columns align with the current roster type.
+   Regular roster: 40 + 58 + 165 = 263px before सोम.
+   Servant roster: 40 + 165 = 205px before सोम. */
+.paper-summary-servant .summary-duty {
+  width:205px !important;
+  min-width:205px !important;
+  max-width:205px !important;
+}
+.paper-summary-regular .summary-duty {
+  width:263px !important;
+  min-width:263px !important;
+  max-width:263px !important;
+}
+.paper-summary-servant .summary-day,
+.paper-summary-servant .summary-count {
+  width:49px !important;
+  min-width:49px !important;
+  max-width:49px !important;
+}
+.paper-summary-regular .summary-day,
+.paper-summary-regular .summary-count {
+  width:49px !important;
+  min-width:49px !important;
+  max-width:49px !important;
+}
+@media print {
+  .paper-summary-servant .summary-duty {
+    width:205px !important;
+    min-width:205px !important;
+    max-width:205px !important;
+  }
+  .paper-summary-regular .summary-duty {
+    width:263px !important;
+    min-width:263px !important;
+    max-width:263px !important;
+  }
+}
+
+
+/* Servant PDF: the main table keeps the trailing जमा column, so the summary
+   must keep one matching blank trailing column to preserve exact weekday alignment. */
+.paper-summary-servant .summary-extra {
+  width:40px !important;
+  min-width:40px !important;
+  max-width:40px !important;
+  box-sizing:border-box !important;
+}
+
+@media print {
+  .paper-summary-servant .summary-extra {
+    width:40px !important;
+    min-width:40px !important;
+    max-width:40px !important;
+  }
+}
+
+
+/* =========================================================
+   v15 - Adjustable A4 Table Column Widths + Row Heights
+   Values come from roster.tableSizes and are stored with
+   the ward roster.
+   ========================================================= */
+
+.paper-roster .col-sr,
+.paper-summary .col-sr {
+  width:var(--tbl-sr,40px) !important;
+}
+
+.paper-roster .col-roll,
+.paper-summary .col-roll {
+  width:var(--tbl-roll,58px) !important;
+}
+
+.paper-roster .col-name,
+.paper-summary .col-name {
+  width:var(--tbl-name,165px) !important;
+}
+
+.paper-roster .col-day,
+.paper-summary .col-day {
+  width:var(--tbl-day,49px) !important;
+}
+
+.paper-roster .col-extra,
+.paper-summary .col-extra {
+  width:var(--tbl-extra,40px) !important;
+}
+
+/* Main roster row height */
+.paper-roster tbody tr:not(.group-row) td {
+  height:var(--tbl-row,29px) !important;
+  min-height:var(--tbl-row,29px) !important;
+}
+
+/* Main header height */
+.paper-roster thead th {
+  height:var(--tbl-header-row,43px) !important;
+  min-height:var(--tbl-header-row,43px) !important;
+}
+
+/* Post / group separator */
+.paper-roster tbody .group-row td {
+  height:var(--tbl-group-row,33px) !important;
+  min-height:var(--tbl-group-row,33px) !important;
+}
+
+/* Summary header */
+.paper-summary thead th {
+  height:var(--tbl-summary-header-row,37px) !important;
+  min-height:var(--tbl-summary-header-row,37px) !important;
+}
+
+/* Summary body rows */
+.paper-summary tbody tr td,
+.paper-summary tbody tr th {
+  height:var(--tbl-summary-row,30px) !important;
+  min-height:var(--tbl-summary-row,30px) !important;
+}
+
+/* Summary duty label follows the selected first-column widths */
+.paper-summary-regular .summary-duty {
+  width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-roll,58px) +
+    var(--tbl-name,165px)
+  ) !important;
+  min-width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-roll,58px) +
+    var(--tbl-name,165px)
+  ) !important;
+  max-width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-roll,58px) +
+    var(--tbl-name,165px)
+  ) !important;
+}
+
+.paper-summary-servant .summary-duty {
+  width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-name,165px)
+  ) !important;
+  min-width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-name,165px)
+  ) !important;
+  max-width:calc(
+    var(--tbl-sr,40px) +
+    var(--tbl-name,165px)
+  ) !important;
+}
+
+/* Ensure the draggable/slider UI is easy to use */
+.table-size-panel {
+  margin:0 20px 14px;
+  border:1px solid #dce2e8;
+  border-radius:9px;
+  background:#fafbfc;
+  overflow:hidden;
+}
+
+.table-size-panel-head {
+  padding:10px 12px;
+  border-bottom:1px solid #e1e6eb;
+  background:#f4f6f8;
+}
+
+.table-size-panel-head div {
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.table-size-panel-head b {
+  font-size:12px;
+  color:#35404b;
+}
+
+.table-size-panel-head span {
+  font-size:10px;
+  color:#77828d;
+}
+
+.table-size-grid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px 12px;
+  padding:11px 12px 8px;
+}
+
+.table-size-item {
+  padding:8px 9px;
+  border:1px solid #e1e5e9;
+  border-radius:7px;
+  background:#fff;
+}
+
+.table-size-label {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  font-size:10px;
+  color:#52606d;
+  margin-bottom:6px;
+}
+
+.table-size-label b {
+  font-size:10px;
+  color:#34495e;
+  white-space:nowrap;
+}
+
+.table-size-controls {
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+
+.table-size-controls button {
+  width:26px;
+  height:26px;
+  flex:0 0 26px;
+  border:1px solid #cfd6dd;
+  border-radius:5px;
+  background:#fff;
+  color:#34495e;
+  font-size:18px;
+  line-height:1;
+  padding:0;
+}
+
+.table-size-controls button:hover {
+  background:#f1f4f7;
+}
+
+.table-size-controls input[type="range"] {
+  flex:1;
+  min-width:0;
+  accent-color:#34495e;
+}
+
+.table-size-note {
+  padding:8px 12px 11px;
+  font-size:10px;
+  line-height:1.5;
+  color:#69737e;
+}
+
+@media(max-width:700px) {
+  .table-size-grid {
+    grid-template-columns:1fr;
+  }
+}
+
+@media print {
+  .table-size-panel {
+    display:none !important;
+  }
+}
+
+/* FINAL: Summary labels normal weight and lighter grid lines */
+.paper-summary th,
+.paper-summary td {
+  border: 0.75px solid #666 !important;
+  font-weight: 400 !important;
+}
+
+.paper-summary .summary-duty,
+.paper-summary .summary-duty.summary-label,
+.paper-summary .summary-label,
+.paper-summary .summary-abbr {
+  font-weight: 400 !important;
+}
+
+.paper-summary .summary-abbr {
+  font-weight: 400 !important;
+}
+
+.paper-summary .summary-count {
+  font-weight: 400 !important;
+}
+
+.paper-summary tbody th,
+.paper-summary tbody td {
+  font-weight: 400 !important;
+}
+
+.paper-summary .grand-total th,
+.paper-summary .grand-total td {
+  font-weight: 400 !important;
+}
+
+@media print {
+  .paper-summary th,
+  .paper-summary td {
+    border-width: 0.75px !important;
+    border-color: #666 !important;
+    font-weight: 400 !important;
+  }
+}
+
+/* FINAL: make ALL printable roster and summary grid lines light/thin */
+.paper-roster,
+.paper-summary {
+  border-collapse: collapse !important;
+}
+
+.paper-roster th,
+.paper-roster td,
+.paper-summary th,
+.paper-summary td {
+  border: 0.75px solid #666 !important;
+}
+
+/* Keep group separators from becoming visually heavier */
+.paper-roster .group-row td {
+  border: 0.75px solid #666 !important;
+}
+
+@media print {
+  .paper-roster th,
+  .paper-roster td,
+  .paper-summary th,
+  .paper-summary td,
+  .paper-roster .group-row td {
+    border-width: 0.75px !important;
+    border-style: solid !important;
+    border-color: #666 !important;
+  }
+}
