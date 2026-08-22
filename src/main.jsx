@@ -338,6 +338,7 @@ function cleanMarathiText(text) {
 function transliterateName(name) {
   if (!name?.trim()) return "";
 
+  // Already Marathi/Devanagari: keep it as entered.
   if (/[\u0900-\u097F]/.test(name)) {
     return cleanMarathiText(name);
   }
@@ -347,12 +348,42 @@ function transliterateName(name) {
       Sanscript.t(name, "itrans", "devanagari")
     );
 
-    // Marathi spelling corrections
+    // --------------------------------------------------
+    // Marathi spelling normalization
+    // --------------------------------------------------
+
+    // शिन् / शिन्ह / similar forms → शिं
+    result = result
+      .replace(/शिन्/g, "शिं")
+      .replace(/शिन्ह/g, "शिं");
+
+    // Generic consonant + ि + anusvara-related corrections
+    result = result
+      .replace(/([क-ह])िन्/g, "$1िं")
+      .replace(/([क-ह])िन्/g, "$1िं");
+
+    // Common "न् + consonant" Marathi joining
+    result = result
+      .replace(/न्([क-ह])/g, "ं$1");
+
+    // Common Marathi spellings
     const corrections = {
       "सुर्य": "सूर्य",
+      "सुर्यवंश": "सूर्यवंश",
+      "सुर्यवन्श": "सूर्यवंश",
       "वन्श": "वंश",
-      "सुर्यवंश": "सूर्यवंश"
+      "शिन्दे": "शिंदे"
     };
+
+    Object.entries(corrections).forEach(([wrong, correct]) => {
+      result = result.replaceAll(wrong, correct);
+    });
+
+    return cleanMarathiText(result);
+  } catch {
+    return name;
+  }
+}
 
     Object.entries(corrections).forEach(([wrong, correct]) => {
       result = result.replaceAll(wrong, correct);
