@@ -338,7 +338,7 @@ function cleanMarathiText(text) {
 function transliterateName(name) {
   if (!name?.trim()) return "";
 
-  // Already Marathi/Devanagari: keep it as entered.
+  // Already Marathi/Devanagari: keep exactly as entered.
   if (/[\u0900-\u097F]/.test(name)) {
     return cleanMarathiText(name);
   }
@@ -348,34 +348,39 @@ function transliterateName(name) {
       Sanscript.t(name, "itrans", "devanagari")
     );
 
-    // --------------------------------------------------
     // Marathi spelling normalization
-    // --------------------------------------------------
+    const corrections = [
+      // सूर्य / सूर्यवंशी
+      ["सुर्यवंशी", "सूर्यवंशी"],
+      ["सुर्यवन्शी", "सूर्यवंशी"],
+      ["सुर्यवंश", "सूर्यवंश"],
+      ["सुर्यवन्श", "सूर्यवंश"],
+      ["सुर्य", "सूर्य"],
 
-    // शिन् / शिन्ह / similar forms → शिं
-    result = result
-      .replace(/शिन्/g, "शिं")
-      .replace(/शिन्ह/g, "शिं");
+      // वंश
+      ["वन्श", "वंश"],
+      ["वन्शी", "वंशी"],
 
-    // Generic consonant + ि + anusvara-related corrections
-    result = result
-      .replace(/([क-ह])िन्/g, "$1िं")
-      .replace(/([क-ह])िन्/g, "$1िं");
+      // शिंदे and similar nasal forms
+      ["शिन्दे", "शिंदे"],
+      ["शिन्डे", "शिंदे"],
+      ["शिंदे", "शिंदे"],
 
-    // Common "न् + consonant" Marathi joining
-    result = result
-      .replace(/न्([क-ह])/g, "ं$1");
+      // Common Marathi forms
+      ["मन्डे", "मंडे"],
+      ["मन्डल", "मंडल"],
+      ["पन्ड्या", "पंड्या"],
+      ["कन्डे", "कंडे"],
+      ["कुन्डे", "कुंडे"],
+      ["सन्डे", "संडे"],
 
-    // Common Marathi spellings
-    const corrections = {
-      "सुर्य": "सूर्य",
-      "सुर्यवंश": "सूर्यवंश",
-      "सुर्यवन्श": "सूर्यवंश",
-      "वन्श": "वंश",
-      "शिन्दे": "शिंदे"
-    };
+      // Common ि + न् forms
+      ["सिन्धे", "सिंधे"],
+      ["बिन्दे", "बिंदे"],
+      ["चिन्धे", "चिंधे"]
+    ];
 
-    Object.entries(corrections).forEach(([wrong, correct]) => {
+    corrections.forEach(([wrong, correct]) => {
       result = result.replaceAll(wrong, correct);
     });
 
