@@ -390,15 +390,7 @@ function transliterateName(name) {
   }
 }
 
-    Object.entries(corrections).forEach(([wrong, correct]) => {
-      result = result.replaceAll(wrong, correct);
-    });
-
-    return result;
-  } catch {
-    return name;
-  }
-}
+    
 
 function honorific(gender){
   if(gender==="female") return "श्रीमती.";
